@@ -1,0 +1,20 @@
+# 로컬 개발용 DB(TimescaleDB = PostgreSQL + 시계열 확장)와 Redis
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    environment:
+      POSTGRES_DB: ove
+      POSTGRES_USER: ${DB_USERNAME:-ove}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ove}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  db-data:

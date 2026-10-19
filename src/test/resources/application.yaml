@@ -1,0 +1,6 @@
+# 테스트는 외부 DB 없이 돌도록 인메모리 H2(PostgreSQL 호환 모드)를 사용한다.
+spring:
+  datasource:
+    url: jdbc:h2:mem:ove;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
