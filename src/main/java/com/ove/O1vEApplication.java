@@ -1,4 +1,4 @@
-package com.example.o1ve;
+package com.ove;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
