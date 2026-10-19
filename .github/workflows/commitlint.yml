@@ -1,0 +1,39 @@
+name: Commit Message Lint
+
+on:
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  commitlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check commit messages
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          TYPES="feat|fix|docs|style|refactor|test|chore|design|comment|rename|remove|!HOTFIX"
+          PATTERN="^($TYPES): .{1,72}$"
+
+          FAILED=0
+          while IFS= read -r MSG; do
+            echo "검사 중: $MSG"
+            if ! echo "$MSG" | grep -qE "$PATTERN"; then
+              echo "❌ 잘못된 커밋 메시지: \"$MSG\""
+              FAILED=1
+            fi
+          done < <(git log --no-merges --format="%s" "$BASE_SHA..$HEAD_SHA")
+
+          if [ "$FAILED" -eq 1 ]; then
+            echo ""
+            echo "형식: <type>: <설명> (설명은 1~72자)"
+            echo "허용된 타입: ${TYPES//|/ | }"
+            exit 1
+          fi
+
+          echo "모든 커밋 메시지 검사 통과!"
