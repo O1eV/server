@@ -2,7 +2,7 @@
 name: 기능 요청
 about: 기능 요청
 title: "[FEAT] "
-labels: enhancement
+labels: feat
 type: Feature
 ---
 

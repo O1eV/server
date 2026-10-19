@@ -2,7 +2,7 @@
 name: 리팩터링
 about: 리팩터링
 title: "[REFACTOR] "
-labels: tech-debt
+labels: refactor
 type: Task
 ---
 
