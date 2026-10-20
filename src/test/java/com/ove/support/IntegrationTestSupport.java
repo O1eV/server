@@ -10,6 +10,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.GenericContainer;
 
 import com.ove.account.repository.PaperAccountRepository;
+import com.ove.paper.repository.PaperHoldingRepository;
+import com.ove.paper.repository.PaperOrderRepository;
 import com.ove.user.repository.TermsAgreementRepository;
 import com.ove.user.repository.UserRepository;
 
@@ -52,8 +54,16 @@ public abstract class IntegrationTestSupport {
     @Autowired
     protected PaperAccountRepository paperAccountRepository;
 
+    @Autowired
+    protected PaperHoldingRepository paperHoldingRepository;
+
+    @Autowired
+    protected PaperOrderRepository paperOrderRepository;
+
     @AfterEach
     void cleanUp() {
+        paperOrderRepository.deleteAllInBatch();
+        paperHoldingRepository.deleteAllInBatch();
         paperAccountRepository.deleteAllInBatch();
         termsAgreementRepository.deleteAllInBatch();
         userRepository.deleteAllInBatch();
