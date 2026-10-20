@@ -12,9 +12,11 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.ove.global.security.JwtProperties;
 import com.ove.global.security.JwtProvider;
+import com.ove.market.client.UpbitClient;
 import com.ove.support.IntegrationTestSupport;
 
 /**
@@ -27,6 +29,10 @@ class UserControllerTest extends IntegrationTestSupport {
 
     @Autowired
     private JwtProperties jwtProperties;
+
+    // 시세 경로 테스트가 진짜 업비트를 부르지 않도록 가짜로 바꾼다.
+    @MockitoBean
+    private UpbitClient upbitClient;
 
     @Test
     void 내정보_성공_200() throws Exception {
@@ -81,20 +87,20 @@ class UserControllerTest extends IntegrationTestSupport {
 
     @Test
     void permitAll_시세경로는_토큰없이_통과한다() throws Exception {
-        // 아직 컨트롤러가 없어 404지만, Security에서 401로 막히지 않는 것을 확인한다.
+        // UpbitClient가 가짜라 종목이 비어 있다. Security에서 401로 막히지 않고 컨트롤러까지 가는 것을 확인한다.
         mockMvc.perform(get("/api/markets"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("RESOURCE_NOT_FOUND"));
-        mockMvc.perform(get("/api/markets/search"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/markets/search").param("q", "btc"))
+                .andExpect(status().isOk());
         mockMvc.perform(get("/api/markets/KRW-BTC/candles"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("MARKET_NOT_FOUND"));
     }
 
     @Test
     void permitAll_경로에_잘못된_토큰이_와도_익명으로_통과한다() throws Exception {
         mockMvc.perform(get("/api/markets").header("Authorization", "Bearer forged.token.value"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isOk());
     }
 
     @Test
