@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -29,6 +30,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.ove.auth.repository.TokenRedisRepository;
+import com.ove.global.exception.BusinessException;
+import com.ove.global.exception.ErrorCode;
 import com.ove.global.security.JwtProvider;
 import com.ove.market.client.UpbitCandleResponse;
 import com.ove.market.client.UpbitClient;
@@ -217,6 +220,86 @@ class MarketControllerTest {
                 .andExpect(jsonPath("$.error").value("MARKET_NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value("종목을 찾을 수 없습니다."))
                 .andExpect(jsonPath("$.path").value("/api/markets/KRW-DOGE/candles"));
+    }
+
+    @Test
+    @DisplayName("종목 목록: page * size가 int 범위를 넘어도 500 없이 빈 페이지가 나온다")
+    void getMarketsPageOverflow() throws Exception {
+        mockMvc.perform(get("/api/markets").param("page", "2147483647").param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items", hasSize(0)))
+                .andExpect(jsonPath("$.data.totalElements").value(3));
+    }
+
+    @Test
+    @DisplayName("종목 목록: size가 1~100을 벗어나면 400")
+    void getMarketsInvalidSize() throws Exception {
+        mockMvc.perform(get("/api/markets").param("size", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+        mockMvc.perform(get("/api/markets").param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("파라미터 타입이 안 맞으면 500이 아니라 400 INVALID_REQUEST")
+    void typeMismatch() throws Exception {
+        mockMvc.perform(get("/api/markets").param("page", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("파라미터 'page'의 값이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.data").value(nullValue()));
+        mockMvc.perform(get("/api/markets/search").param("q", "btc").param("limit", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+        mockMvc.perform(get("/api/markets/KRW-BTC/candles").param("from", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+        mockMvc.perform(get("/api/markets/KRW-BTC/candles").param("limit", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("검색: limit이 1~50을 벗어나면 400")
+    void searchMarketsInvalidLimit() throws Exception {
+        mockMvc.perform(get("/api/markets/search").param("q", "btc").param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+        mockMvc.perform(get("/api/markets/search").param("q", "btc").param("limit", "51"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("캔들 조회: from이 to보다 늦으면 400")
+    void getCandlesFromAfterTo() throws Exception {
+        mockMvc.perform(get("/api/markets/KRW-BTC/candles")
+                        .param("from", "2026-10-19T12:00:00Z")
+                        .param("to", "2026-10-19T11:00:00Z"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("업비트 호출이 실패하면 500이 아니라 502 UPSTREAM_UNAVAILABLE")
+    void upstreamUnavailable() throws Exception {
+        given(upbitClient.getMarkets()).willThrow(new BusinessException(ErrorCode.UPSTREAM_UNAVAILABLE));
+        given(upbitClient.getCandles(any(), any(), any(), anyInt()))
+                .willThrow(new BusinessException(ErrorCode.UPSTREAM_UNAVAILABLE));
+
+        mockMvc.perform(get("/api/markets"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.statusCode").value(502))
+                .andExpect(jsonPath("$.error").value("UPSTREAM_UNAVAILABLE"))
+                .andExpect(jsonPath("$.data").value(nullValue()));
+        mockMvc.perform(get("/api/markets/search").param("q", "btc"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.error").value("UPSTREAM_UNAVAILABLE"));
+        mockMvc.perform(get("/api/markets/KRW-BTC/candles"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.error").value("UPSTREAM_UNAVAILABLE"));
     }
 
     // 테스트용 가짜 업비트 종목을 만들 때 사용
