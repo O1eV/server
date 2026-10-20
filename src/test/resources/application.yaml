@@ -4,3 +4,12 @@ spring:
     url: jdbc:h2:mem:ove;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
     username: sa
     password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+# 테스트 전용 키. 운영 키와 무관하다.
+jwt:
+  secret: test-secret-key-for-ove-backend-must-be-at-least-32-bytes
+  access-token-expiration: 30m
+  refresh-token-expiration: 14d
