@@ -1,0 +1,46 @@
+name: Build and Test
+
+on:
+  pull_request:
+    branches: [ main, dev ]
+  push:
+    branches: [ main, dev ]
+
+permissions:
+  contents: read
+
+# 같은 브랜치·PR에 새 커밋이 올라오면 이전 실행은 취소한다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Gradle 의존성·빌드 캐시. 기본 브랜치(dev)에서만 캐시를 쓰고 나머지 브랜치는 읽기만 한다.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # 테스트 포함 빌드. Testcontainers를 쓰는 테스트는 runner에 기본 설치된 Docker로 컨테이너를 띄운다.
+      # 테스트 설정은 src/test/resources/application.yaml의 테스트 값만 쓰므로 시크릿을 넘기지 않는다.
+      - name: Build with Gradle
+        run: ./gradlew build
+
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-report
+          path: |
+            build/reports/tests/test/
+            build/test-results/test/
+          retention-days: 7
