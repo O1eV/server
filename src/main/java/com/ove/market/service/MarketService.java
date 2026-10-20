@@ -32,6 +32,8 @@ public class MarketService {
     private static final List<String> SIGNALS = List.of("BUY", "HOLD", "SELL");
     private static final int UPBIT_MAX_COUNT = 200;
     private static final int MAX_CANDLES = 500;
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_SEARCH_LIMIT = 50;
 
     private final UpbitClient upbitClient;
 
@@ -40,8 +42,9 @@ public class MarketService {
         checkFilter(assetClass, ASSET_CLASSES);
         checkFilter(marketState, MARKET_STATES);
         checkFilter(signal, SIGNALS);
-        if (page < 0 || size < 1) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "page는 0 이상, size는 1 이상이어야 합니다.");
+        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "page는 0 이상, size는 1~" + MAX_PAGE_SIZE + " 사이여야 합니다.");
         }
 
         List<UpbitTickerResponse> tickers = upbitClient.getTickers(SUPPORTED_SYMBOLS);
@@ -61,7 +64,8 @@ public class MarketService {
             }
         }
 
-        int start = Math.min(page * size, result.size());
+        // page가 아주 크면 page * size가 int 범위를 넘어 음수가 되므로 long으로 계산한다.
+        int start = (int) Math.min((long) page * size, result.size());
         int end = Math.min(start + size, result.size());
         return new MarketListResponse(result.subList(start, end), page, size, result.size());
     }
@@ -70,6 +74,9 @@ public class MarketService {
     public MarketSearchListResponse searchMarkets(String q, int limit) {
         if (q == null || q.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "검색어를 입력해 주세요.");
+        }
+        if (limit < 1 || limit > MAX_SEARCH_LIMIT) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "limit은 1~" + MAX_SEARCH_LIMIT + " 사이여야 합니다.");
         }
         String keyword = q.trim().toLowerCase();
 
@@ -93,33 +100,43 @@ public class MarketService {
         if (!SUPPORTED_SYMBOLS.contains(market)) {
             throw new BusinessException(ErrorCode.MARKET_NOT_FOUND);
         }
+        // 업비트를 부르기 전에 요청 값을 먼저 모두 검증한다.
+        String candleType = toUpbitCandleType(interval);
         if (limit < 1 || limit > MAX_CANDLES) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "limit은 1~500 사이여야 합니다.");
         }
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "from은 to보다 늦을 수 없습니다.");
+        }
 
         List<CandleResponse> candles = new ArrayList<>();
-        for (UpbitCandleResponse upbitCandle : fetchCandles(toUpbitCandleType(interval), market, to, limit)) {
-            CandleResponse candle = new CandleResponse(upbitCandle);
-            if (from == null || !candle.getTime().isBefore(from)) {
-                candles.add(candle);
-            }
+        for (UpbitCandleResponse upbitCandle : fetchCandles(candleType, market, from, to, limit)) {
+            candles.add(new CandleResponse(upbitCandle));
         }
         Collections.reverse(candles);
         return new CandleListResponse(market, interval, candles);
     }
 
     // 업비트는 한 번에 200개까지만 줘서, limit만큼 찰 때까지 나눠서 받아올 때 사용
-    private List<UpbitCandleResponse> fetchCandles(String candleType, String market, Instant to, int limit) {
+    // 캔들은 최신순으로 오므로 from보다 오래된 캔들을 만나면 더 받지 않고 멈춘다.
+    private List<UpbitCandleResponse> fetchCandles(String candleType, String market, Instant from, Instant to,
+                                                   int limit) {
         List<UpbitCandleResponse> result = new ArrayList<>();
         Instant cursor = to;
         while (result.size() < limit) {
             int count = Math.min(UPBIT_MAX_COUNT, limit - result.size());
             List<UpbitCandleResponse> batch = upbitClient.getCandles(candleType, market, cursor, count);
-            result.addAll(batch);
+            for (UpbitCandleResponse candle : batch) {
+                if (from != null && candle.toInstant().isBefore(from)) {
+                    return result;
+                }
+                result.add(candle);
+            }
             if (batch.size() < count) {
                 break;
             }
-            cursor = Instant.parse(batch.get(batch.size() - 1).getCandleDateTimeUtc() + "Z");
+            // 업비트의 to는 그 시각을 포함하지 않아서, 마지막 캔들 시각을 넘기면 다음 묶음과 겹치지 않는다.
+            cursor = batch.get(batch.size() - 1).toInstant();
         }
         return result;
     }

@@ -21,7 +21,7 @@ public class CandleResponse {
 
     // 업비트 캔들로 차트용 캔들 응답을 만들 때 사용
     public CandleResponse(UpbitCandleResponse candle) {
-        this.time = Instant.parse(candle.getCandleDateTimeUtc() + "Z");
+        this.time = candle.toInstant();
         this.open = candle.getOpeningPrice();
         this.high = candle.getHighPrice();
         this.low = candle.getLowPrice();

@@ -6,8 +6,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.ove.global.response.ApiResponse;
@@ -42,6 +44,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleNotReadable(HttpMessageNotReadableException e,
                                                                HttpServletRequest request) {
         return toResponse(ErrorCode.INVALID_REQUEST, "요청 본문을 읽을 수 없습니다.", request);
+    }
+
+    // 쿼리 파라미터·경로 변수 타입이 안 맞는 경우 (예: page=abc, from=abc)
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException e,
+                                                                HttpServletRequest request) {
+        return toResponse(ErrorCode.INVALID_REQUEST, "파라미터 '" + e.getName() + "'의 값이 올바르지 않습니다.", request);
+    }
+
+    // 필수 쿼리 파라미터가 빠진 경우
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingParameter(MissingServletRequestParameterException e,
+                                                                    HttpServletRequest request) {
+        return toResponse(ErrorCode.INVALID_REQUEST, "필수 파라미터 '" + e.getParameterName() + "'가 없습니다.", request);
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
