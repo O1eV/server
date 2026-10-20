@@ -5,3 +5,22 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/ove}
     username: ${DB_USERNAME:ove}
     password: ${DB_PASSWORD:ove}
+  jpa:
+    # 마이그레이션 도구(Flyway 등) 도입 전까지는 엔티티 기준으로 스키마를 맞춘다.
+    hibernate:
+      ddl-auto: ${DDL_AUTO:update}
+    open-in-view: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+jwt:
+  # HS256 서명 키. 32바이트(256bit) 이상이어야 하며 반드시 환경변수로 주입한다.
+  secret: ${JWT_SECRET}
+  access-token-expiration: 30m
+  refresh-token-expiration: 14d
+
+paper-account:
+  # 회원가입 시 만들어 주는 모의계좌 초기 잔고(KRW)
+  initial-balance: 10000000
