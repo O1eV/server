@@ -1,0 +1,40 @@
+name: Claude Review
+
+# PR 코멘트·리뷰에서 @claude를 멘션했을 때만 실행한다.
+# PR open/synchronize 자동 리뷰는 넣지 않는다(사용자 Claude 구독 사용량 절약).
+on:
+  issue_comment:
+    types: [ created ]
+  pull_request_review_comment:
+    types: [ created ]
+  pull_request_review:
+    types: [ submitted ]
+
+jobs:
+  claude-review:
+    # issue_comment는 이슈에도 달리므로 PR 코멘트(github.event.issue.pull_request 존재)일 때만 실행한다.
+    if: |
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
+    runs-on: ubuntu-latest
+    # 리뷰 코멘트만 남기므로 코드 push 권한(contents: write)은 주지 않는다.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      # 쓰기 권한이 있는 사용자만 실행할 수 있다(액션 기본 동작).
+      # github_token을 넘기면 Claude GitHub App 없이 워크플로 토큰(위 permissions 범위)으로 동작한다.
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: |
+            --max-turns 15
+            --append-system-prompt "이 저장소의 PR 리뷰어로 동작한다. 모든 코멘트는 한국어로 쓴다. 리뷰 기준: (1) .claude/CLAUDE.md 컨벤션 준수 - com.ove.{domain}.{controller|service|repository|domain|dto} 패키지, Controller는 검증과 응답 변환만 하고 비즈니스 로직은 Service에, @Transactional은 Service에만, Entity를 API로 반환하지 않고 DTO로 변환, Lombok @Data 금지(@Getter와 @Builder 사용), 응답은 공통 envelope {statusCode, timestamp, path, message, data, error}, 예외는 BusinessException과 ErrorCode로 던지고 @ControllerAdvice에서 변환, 네이밍 규칙. (2) 버그와 로직 오류. (3) 보안 문제(인증·인가 누락, 시크릿 노출, 인젝션 등). (4) 변경에 대한 테스트 누락. 확실한 문제 위주로 파일:라인과 수정 방법을 짧게 적고, 스타일 취향만의 지적은 하지 않는다."
