@@ -16,6 +16,7 @@ import com.ove.account.domain.PaperAccount;
 import com.ove.account.repository.PaperAccountRepository;
 import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
+import com.ove.market.service.MarketPriceProvider;
 import com.ove.paper.domain.OrderSide;
 import com.ove.paper.domain.PaperHolding;
 import com.ove.paper.domain.PaperOrder;
@@ -38,15 +39,18 @@ public class PaperTradingService {
     private final PaperAccountRepository paperAccountRepository;
     private final PaperHoldingRepository paperHoldingRepository;
     private final PaperOrderRepository paperOrderRepository;
+    private final MarketPriceProvider marketPriceProvider;
     private final BigDecimal initialBalance;
 
     public PaperTradingService(PaperAccountRepository paperAccountRepository,
                                PaperHoldingRepository paperHoldingRepository,
                                PaperOrderRepository paperOrderRepository,
+                               MarketPriceProvider marketPriceProvider,
                                @Value("${paper-account.initial-balance:10000000}") BigDecimal initialBalance) {
         this.paperAccountRepository = paperAccountRepository;
         this.paperHoldingRepository = paperHoldingRepository;
         this.paperOrderRepository = paperOrderRepository;
+        this.marketPriceProvider = marketPriceProvider;
         this.initialBalance = initialBalance;
     }
 
@@ -67,12 +71,17 @@ public class PaperTradingService {
 
     @Transactional
     public PaperOrderResponse placeOrder(UUID userId, PaperOrderRequest request) {
-        PaperAccount account = getAccountWithLock(userId);
         String symbol = normalizeSymbol(request.getSymbol());
         BigDecimal quantity = request.getQuantity().setScale(12, RoundingMode.HALF_UP);
-        BigDecimal price = request.getPrice().setScale(8, RoundingMode.HALF_UP);
+        // 체결가는 클라이언트 입력이 아니라 서버가 조회한 최신가만 사용한다.
+        BigDecimal price = marketPriceProvider.getLatestPrice(symbol).setScale(8, RoundingMode.HALF_UP);
         BigDecimal amount = price.multiply(quantity).setScale(AMOUNT_SCALE, RoundingMode.HALF_UP);
+        if (amount.signum() == 0) {
+            throw new BusinessException(ErrorCode.ORDER_AMOUNT_TOO_SMALL);
+        }
 
+        // 외부 시세 응답을 기다리는 동안 계좌 행 잠금을 점유하지 않도록 가격 검증 후 잠근다.
+        PaperAccount account = getAccountWithLock(userId);
         if (request.getSide() == OrderSide.BUY) {
             buy(account, symbol, quantity, price, amount);
         } else {

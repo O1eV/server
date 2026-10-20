@@ -17,7 +17,12 @@ public interface PaperOrderRepository extends JpaRepository<PaperOrder, Long> {
 
     Page<PaperOrder> findAllByPaperAccountUserIdAndSymbol(UUID userId, String symbol, Pageable pageable);
 
-    @Modifying
-    @Query("delete from PaperOrder paperOrder where paperOrder.paperAccount.user.id = :userId")
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            delete from PaperOrder paperOrder
+            where paperOrder.paperAccount.id in (
+                select paperAccount.id from PaperAccount paperAccount where paperAccount.user.id = :userId
+            )
+            """)
     void deleteAllByUserId(@Param("userId") UUID userId);
 }

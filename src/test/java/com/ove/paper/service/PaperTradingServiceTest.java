@@ -27,6 +27,7 @@ import com.ove.account.domain.PaperAccount;
 import com.ove.account.repository.PaperAccountRepository;
 import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
+import com.ove.market.service.MarketPriceProvider;
 import com.ove.paper.domain.OrderSide;
 import com.ove.paper.domain.PaperHolding;
 import com.ove.paper.domain.PaperOrder;
@@ -51,6 +52,9 @@ class PaperTradingServiceTest {
     @Mock
     private PaperOrderRepository paperOrderRepository;
 
+    @Mock
+    private MarketPriceProvider marketPriceProvider;
+
     private PaperTradingService paperTradingService;
 
     private PaperAccount account;
@@ -59,17 +63,18 @@ class PaperTradingServiceTest {
     void setUp() {
         account = account("10000000");
         paperTradingService = new PaperTradingService(paperAccountRepository, paperHoldingRepository,
-                paperOrderRepository, new BigDecimal("10000000"));
+                paperOrderRepository, marketPriceProvider, new BigDecimal("10000000"));
     }
 
     @Test
     void 매수하면_잔고를_차감하고_신규_보유종목과_체결이력을_만든다() {
         given(paperAccountRepository.findWithLockByUserId(USER_ID)).willReturn(Optional.of(account));
+        given(marketPriceProvider.getLatestPrice("KRW-BTC")).willReturn(new BigDecimal("1000"));
         given(paperHoldingRepository.findByPaperAccountIdAndSymbol(account.getId(), "KRW-BTC"))
                 .willReturn(Optional.empty());
         given(paperOrderRepository.save(any(PaperOrder.class))).willAnswer(invocation -> savedOrder(invocation.getArgument(0)));
 
-        PaperOrderResponse response = paperTradingService.placeOrder(USER_ID, order("krw-btc", OrderSide.BUY, "2", "1000"));
+        PaperOrderResponse response = paperTradingService.placeOrder(USER_ID, order("krw-btc", OrderSide.BUY, "2"));
 
         assertThat(response.getSymbol()).isEqualTo("KRW-BTC");
         assertThat(response.getAmount()).isEqualByComparingTo("2000");
@@ -88,8 +93,9 @@ class PaperTradingServiceTest {
         given(paperHoldingRepository.findByPaperAccountIdAndSymbol(account.getId(), "KRW-BTC"))
                 .willReturn(Optional.of(holding));
         given(paperOrderRepository.save(any(PaperOrder.class))).willAnswer(invocation -> savedOrder(invocation.getArgument(0)));
+        given(marketPriceProvider.getLatestPrice("KRW-BTC")).willReturn(new BigDecimal("2000"));
 
-        paperTradingService.placeOrder(USER_ID, order("KRW-BTC", OrderSide.BUY, "2", "2000"));
+        paperTradingService.placeOrder(USER_ID, order("KRW-BTC", OrderSide.BUY, "2"));
 
         assertThat(holding.getQuantity()).isEqualByComparingTo("4");
         assertThat(holding.getAveragePurchasePrice()).isEqualByComparingTo("1500");
@@ -103,8 +109,9 @@ class PaperTradingServiceTest {
         given(paperHoldingRepository.findByPaperAccountIdAndSymbol(account.getId(), "KRW-BTC"))
                 .willReturn(Optional.of(holding));
         given(paperOrderRepository.save(any(PaperOrder.class))).willAnswer(invocation -> savedOrder(invocation.getArgument(0)));
+        given(marketPriceProvider.getLatestPrice("KRW-BTC")).willReturn(new BigDecimal("1200"));
 
-        paperTradingService.placeOrder(USER_ID, order("KRW-BTC", OrderSide.SELL, "2", "1200"));
+        paperTradingService.placeOrder(USER_ID, order("KRW-BTC", OrderSide.SELL, "2"));
 
         assertThat(account.getBalance()).isEqualByComparingTo("10002400");
         then(paperHoldingRepository).should().delete(holding);
@@ -113,18 +120,34 @@ class PaperTradingServiceTest {
     @Test
     void 잔고와_보유수량_부족은_각각_도메인_오류를_돌려준다() {
         given(paperAccountRepository.findWithLockByUserId(USER_ID)).willReturn(Optional.of(account));
+        given(marketPriceProvider.getLatestPrice("KRW-BTC")).willReturn(new BigDecimal("10000001"));
 
         assertThatThrownBy(() -> paperTradingService.placeOrder(USER_ID,
-                order("KRW-BTC", OrderSide.BUY, "1", "10000001")))
+                order("KRW-BTC", OrderSide.BUY, "1")))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.INSUFFICIENT_BALANCE);
 
         given(paperHoldingRepository.findByPaperAccountIdAndSymbol(account.getId(), "KRW-BTC"))
                 .willReturn(Optional.empty());
         assertThatThrownBy(() -> paperTradingService.placeOrder(USER_ID,
-                order("KRW-BTC", OrderSide.SELL, "1", "1000")))
+                order("KRW-BTC", OrderSide.SELL, "1")))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.INSUFFICIENT_HOLDING);
+    }
+
+    @Test
+    void 반올림_후_금액이_0인_주문은_보유수량이나_잔고를_바꾸지_않는다() {
+        given(marketPriceProvider.getLatestPrice("KRW-BTC")).willReturn(new BigDecimal("0.00000001"));
+
+        assertThatThrownBy(() -> paperTradingService.placeOrder(USER_ID,
+                order("KRW-BTC", OrderSide.BUY, "0.000000000001")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.ORDER_AMOUNT_TOO_SMALL);
+
+        assertThat(account.getBalance()).isEqualByComparingTo("10000000");
+        then(paperAccountRepository).shouldHaveNoInteractions();
+        then(paperHoldingRepository).shouldHaveNoInteractions();
+        then(paperOrderRepository).shouldHaveNoInteractions();
     }
 
     @Test
@@ -188,12 +211,11 @@ class PaperTradingServiceTest {
         return result;
     }
 
-    private PaperOrderRequest order(String symbol, OrderSide side, String quantity, String price) {
+    private PaperOrderRequest order(String symbol, OrderSide side, String quantity) {
         return PaperOrderRequest.builder()
                 .symbol(symbol)
                 .side(side)
                 .quantity(new BigDecimal(quantity))
-                .price(new BigDecimal(price))
                 .build();
     }
 

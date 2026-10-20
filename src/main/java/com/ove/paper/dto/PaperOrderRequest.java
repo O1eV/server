@@ -16,8 +16,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 현재 시세 저장소가 만들어지기 전의 모의 주문 입력.
- * 추후 시세 도메인이 추가되면 price는 서버의 최신 체결가로 대체한다.
+ * 모의 주문 입력. 체결가는 조작할 수 없도록 서버가 최신 시세로 결정한다.
  */
 @Getter
 @Builder
@@ -38,8 +37,4 @@ public class PaperOrderRequest {
     @Digits(integer = 12, fraction = 12)
     private BigDecimal quantity;
 
-    @NotNull
-    @DecimalMin(value = "0", inclusive = false)
-    @Digits(integer = 16, fraction = 8)
-    private BigDecimal price;
 }

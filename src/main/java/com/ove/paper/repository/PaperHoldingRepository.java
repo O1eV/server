@@ -17,7 +17,12 @@ public interface PaperHoldingRepository extends JpaRepository<PaperHolding, Long
 
     Optional<PaperHolding> findByPaperAccountIdAndSymbol(Long paperAccountId, String symbol);
 
-    @Modifying
-    @Query("delete from PaperHolding paperHolding where paperHolding.paperAccount.user.id = :userId")
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            delete from PaperHolding paperHolding
+            where paperHolding.paperAccount.id in (
+                select paperAccount.id from PaperAccount paperAccount where paperAccount.user.id = :userId
+            )
+            """)
     void deleteAllByUserId(@Param("userId") UUID userId);
 }

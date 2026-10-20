@@ -14,6 +14,7 @@ public enum ErrorCode {
 
     // 400
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, "요청 값이 올바르지 않습니다."),
+    ORDER_AMOUNT_TOO_SMALL(HttpStatus.BAD_REQUEST, "주문 금액이 너무 작습니다."),
 
     // 401
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
@@ -37,6 +38,9 @@ public enum ErrorCode {
     NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 닉네임입니다."),
     INSUFFICIENT_BALANCE(HttpStatus.CONFLICT, "주문 금액만큼의 모의투자 잔고가 없습니다."),
     INSUFFICIENT_HOLDING(HttpStatus.CONFLICT, "매도할 보유 수량이 부족합니다."),
+
+    // 503
+    MARKET_PRICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "현재 시세를 조회할 수 없습니다."),
 
     // 500
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다.");
