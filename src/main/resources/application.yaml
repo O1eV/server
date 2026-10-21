@@ -32,3 +32,7 @@ upbit:
   read-timeout: 1s
   # 종목 목록(/market/all)을 메모리에 들고 있는 시간
   markets-cache-ttl: 5m
+  # 현재가는 1~2초만 캐시해서, 동시에 많은 요청이 와도 업비트 호출(IP당 초당 10회 한도)이 늘지 않게 한다.
+  ticker-cache-ttl: 1500ms
+  # 429(호출 한도 초과)를 받으면 이만큼 쉬었다가 한 번만 다시 시도한다.
+  rate-limit-backoff: 300ms
