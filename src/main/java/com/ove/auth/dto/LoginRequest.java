@@ -18,4 +18,7 @@ public class LoginRequest {
 
     @NotBlank
     private String password;
+
+    // 로그인 상태 유지. true면 refresh 쿠키가 14일 유지되고, 생략하거나 false면 브라우저를 닫을 때까지만 유지된다.
+    private boolean rememberMe;
 }

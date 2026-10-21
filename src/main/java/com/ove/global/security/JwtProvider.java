@@ -11,16 +11,19 @@ import javax.crypto.SecretKey;
 import org.springframework.stereotype.Component;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 
 /**
- * HS256 JWT 발급·검증. claim은 sub=userId, jti, type(ACCESS/REFRESH)만 쓴다.
+ * HS256 JWT 발급·검증. claim은 sub=userId, jti, type(ACCESS/REFRESH)을 쓰고,
+ * refresh 토큰에는 로그인 상태 유지 여부(rememberMe)를 함께 넣는다.
  */
 @Component
 public class JwtProvider {
 
     private static final String TOKEN_TYPE_CLAIM = "type";
+    private static final String REMEMBER_ME_CLAIM = "rememberMe";
 
     private final JwtProperties jwtProperties;
     private final SecretKey secretKey;
@@ -32,11 +35,12 @@ public class JwtProvider {
     }
 
     public IssuedToken createAccessToken(UUID userId) {
-        return createToken(userId, TokenType.ACCESS, jwtProperties.accessTokenExpiration());
+        return createToken(userId, TokenType.ACCESS, jwtProperties.accessTokenExpiration(), null);
     }
 
-    public IssuedToken createRefreshToken(UUID userId) {
-        return createToken(userId, TokenType.REFRESH, jwtProperties.refreshTokenExpiration());
+    // rememberMe는 재발급할 때도 같은 쿠키 모드(Max-Age 있음/세션 쿠키)를 이어 가려고 토큰에 담아 둔다.
+    public IssuedToken createRefreshToken(UUID userId, boolean rememberMe) {
+        return createToken(userId, TokenType.REFRESH, jwtProperties.refreshTokenExpiration(), rememberMe);
     }
 
     /**
@@ -56,6 +60,10 @@ public class JwtProvider {
         return type == null ? null : TokenType.valueOf(type);
     }
 
+    public boolean isRememberMe(Claims claims) {
+        return Boolean.TRUE.equals(claims.get(REMEMBER_ME_CLAIM, Boolean.class));
+    }
+
     public Duration getAccessTokenExpiration() {
         return jwtProperties.accessTokenExpiration();
     }
@@ -64,19 +72,21 @@ public class JwtProvider {
         return jwtProperties.refreshTokenExpiration();
     }
 
-    private IssuedToken createToken(UUID userId, TokenType type, Duration expiration) {
+    private IssuedToken createToken(UUID userId, TokenType type, Duration expiration, Boolean rememberMe) {
         String jti = UUID.randomUUID().toString();
         Instant now = Instant.now();
         Instant expiresAt = now.plus(expiration);
 
-        String token = Jwts.builder()
+        JwtBuilder builder = Jwts.builder()
                 .subject(userId.toString())
                 .id(jti)
                 .claim(TOKEN_TYPE_CLAIM, type.name())
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(expiresAt))
-                .signWith(secretKey, Jwts.SIG.HS256)
-                .compact();
+                .expiration(Date.from(expiresAt));
+        if (rememberMe != null) {
+            builder.claim(REMEMBER_ME_CLAIM, rememberMe);
+        }
+        String token = builder.signWith(secretKey, Jwts.SIG.HS256).compact();
 
         return new IssuedToken(token, jti, expiresAt);
     }

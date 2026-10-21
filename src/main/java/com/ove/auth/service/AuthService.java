@@ -91,7 +91,8 @@ public class AuthService {
     }
 
     // 이메일이 없는 경우와 비밀번호가 틀린 경우를 같은 코드로 응답해 가입 여부를 노출하지 않는다.
-    public LoginResponse login(LoginRequest request) {
+    // refresh 토큰은 응답 본문이 아니라 쿠키로 내려가므로, 컨트롤러가 쿠키를 만들 수 있게 따로 돌려준다.
+    public AuthResult<LoginResponse> login(LoginRequest request) {
         User user = userRepository.findByEmail(normalizeEmail(request.getEmail()))
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
 
@@ -99,21 +100,23 @@ public class AuthService {
             throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
         }
 
-        TokenResponse tokens = issueTokens(user.getId());
-        return LoginResponse.builder()
-                .accessToken(tokens.getAccessToken())
-                .refreshToken(tokens.getRefreshToken())
-                .expiresIn(tokens.getExpiresIn())
+        Tokens tokens = issueTokens(user.getId(), request.isRememberMe());
+        LoginResponse response = LoginResponse.builder()
+                .accessToken(tokens.accessToken())
+                .expiresIn(tokens.expiresIn())
                 .user(UserSummaryResponse.from(user))
                 .build();
+        return new AuthResult<>(response, tokens.refreshToken(), request.isRememberMe());
     }
 
     /**
      * refresh 토큰 rotation: 서명·만료 검증 → Redis 저장값과 일치 확인 → 기존 토큰 폐기 → 새 쌍 발급.
-     * 어느 단계에서 실패해도 INVALID_REFRESH_TOKEN 하나로 응답한다.
+     * 어느 단계에서 실패해도 INVALID_REFRESH_TOKEN 하나로 응답한다(쿠키가 없어 null이 와도 마찬가지).
+     * 로그인 상태 유지(rememberMe) 여부는 refresh 토큰 claim에서 읽어 새 토큰에도 그대로 이어 준다.
      */
-    public TokenResponse refresh(String refreshToken) {
+    public AuthResult<TokenResponse> refresh(String refreshToken) {
         Claims claims = parseRefreshToken(refreshToken);
+        boolean rememberMe = jwtProvider.isRememberMe(claims);
         UUID userId = UUID.fromString(claims.getSubject());
         String jti = claims.getId();
 
@@ -131,7 +134,12 @@ public class AuthService {
             throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
         }
 
-        return issueTokens(userId);
+        Tokens tokens = issueTokens(userId, rememberMe);
+        TokenResponse response = TokenResponse.builder()
+                .accessToken(tokens.accessToken())
+                .expiresIn(tokens.expiresIn())
+                .build();
+        return new AuthResult<>(response, tokens.refreshToken(), rememberMe);
     }
 
     /**
@@ -152,19 +160,20 @@ public class AuthService {
         }
     }
 
-    private TokenResponse issueTokens(UUID userId) {
+    private Tokens issueTokens(UUID userId, boolean rememberMe) {
         IssuedToken accessToken = jwtProvider.createAccessToken(userId);
-        IssuedToken refreshToken = jwtProvider.createRefreshToken(userId);
+        IssuedToken refreshToken = jwtProvider.createRefreshToken(userId, rememberMe);
 
         // 토큰 원문 대신 해시를 저장해 Redis가 노출돼도 토큰을 바로 쓸 수 없게 한다.
+        // rememberMe=false여도 서버 쪽 만료는 refresh 토큰과 같게 둔다(브라우저의 세션 쿠키만 먼저 사라진다).
         tokenRedisRepository.saveRefreshToken(userId, refreshToken.jti(), hash(refreshToken.token()),
                 jwtProvider.getRefreshTokenExpiration());
 
-        return TokenResponse.builder()
-                .accessToken(accessToken.token())
-                .refreshToken(refreshToken.token())
-                .expiresIn(jwtProvider.getAccessTokenExpiration().toSeconds())
-                .build();
+        return new Tokens(accessToken.token(), refreshToken.token(), jwtProvider.getAccessTokenExpiration().toSeconds());
+    }
+
+    // 발급 직후 컨트롤러에 넘길 토큰 묶음. 응답 본문(accessToken)과 쿠키(refreshToken)로 나뉘어 나간다.
+    private record Tokens(String accessToken, String refreshToken, long expiresIn) {
     }
 
     private Claims parseRefreshToken(String refreshToken) {

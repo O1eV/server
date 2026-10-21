@@ -21,6 +21,15 @@ jwt:
   access-token-expiration: 30m
   refresh-token-expiration: 14d
 
+auth:
+  cookie:
+    # refresh 토큰을 담는 HttpOnly 쿠키. Path 밖의 요청에는 브라우저가 쿠키를 보내지 않는다.
+    name: refreshToken
+    path: /api/auth
+    # https가 아닌 로컬 개발에서만 AUTH_COOKIE_SECURE=false로 끈다. 운영에서는 true를 유지한다.
+    secure: ${AUTH_COOKIE_SECURE:true}
+    same-site: Lax
+
 paper-account:
   # 회원가입 시 만들어 주는 모의계좌 초기 잔고(KRW)
   initial-balance: 10000000
