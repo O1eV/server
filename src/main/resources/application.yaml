@@ -32,3 +32,13 @@ upbit:
   read-timeout: 1s
   # 종목 목록(/market/all)을 메모리에 들고 있는 시간
   markets-cache-ttl: 5m
+
+collector:
+  # 업비트 WebSocket 시세 수집기(체결 → 1분봉 → TimescaleDB·Redis). 운영 환경에서만 COLLECTOR_ENABLED=true로 켠다.
+  # 꺼져 있으면(기본) 업비트에 연결하지도, candles 테이블을 만들지도 않는다.
+  enabled: ${COLLECTOR_ENABLED:false}
+  # 수집할 종목. 쉼표로 여러 개를 줄 수 있다.
+  symbols: ${COLLECTOR_SYMBOLS:KRW-BTC,KRW-ETH,KRW-XRP}
+  # 분이 끝난 뒤 이 시간이 지나야 봉을 마감한다(늦게 도착하는 체결을 기다리는 시간)
+  grace-delay: 1500ms
+
