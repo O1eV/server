@@ -24,3 +24,11 @@ jwt:
 paper-account:
   # 회원가입 시 만들어 주는 모의계좌 초기 잔고(KRW)
   initial-balance: 10000000
+
+upbit:
+  base-url: https://api.upbit.com
+  # 업비트가 느려져도 요청 스레드가 오래 묶이지 않도록 짧게 둔다.
+  connect-timeout: 500ms
+  read-timeout: 1s
+  # 종목 목록(/market/all)을 메모리에 들고 있는 시간
+  markets-cache-ttl: 5m
