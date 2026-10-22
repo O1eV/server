@@ -27,6 +27,8 @@ public class FakeUpbitWebSocketServer implements AutoCloseable {
     private final ServerSocket serverSocket;
     private final List<Connection> connections = new CopyOnWriteArrayList<>();
     private volatile boolean respondToPings = true;
+    // 클라이언트가 text 프레임을 보낼 때마다 불리는 훅(키움 LOGIN·REG에 자동으로 응답하는 용도)
+    private volatile java.util.function.BiConsumer<Connection, String> textHandler;
 
     public FakeUpbitWebSocketServer() throws IOException {
         this.serverSocket = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
@@ -37,6 +39,10 @@ public class FakeUpbitWebSocketServer implements AutoCloseable {
 
     public String url() {
         return "ws://127.0.0.1:" + serverSocket.getLocalPort();
+    }
+
+    public void onClientText(java.util.function.BiConsumer<Connection, String> handler) {
+        this.textHandler = handler;
     }
 
     public void setRespondToPings(boolean respondToPings) {
@@ -214,7 +220,12 @@ public class FakeUpbitWebSocketServer implements AutoCloseable {
                     }
                 }
                 if (opcode == 0x1) {
-                    receivedTexts.add(new String(payload, StandardCharsets.UTF_8));
+                    String text = new String(payload, StandardCharsets.UTF_8);
+                    receivedTexts.add(text);
+                    java.util.function.BiConsumer<Connection, String> handler = textHandler;
+                    if (handler != null) {
+                        handler.accept(this, text);
+                    }
                 } else if (opcode == 0x9) {
                     pings.incrementAndGet();
                     if (respondToPings) {

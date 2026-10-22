@@ -82,8 +82,9 @@ class MarketCollectorTest {
                 Duration.ofSeconds(90), Duration.ofSeconds(10), Duration.ofMillis(50), 3);
         MarketRedisPublisher publisher = new MarketRedisPublisher(redis.template(), objectMapper,
                 properties.priceTtl(), properties.tickPublishInterval());
-        collector = new MarketCollector(properties, new NoopTradeSource(), new CandleAggregator(GRACE), repository,
-                publisher, upbitClient, clock);
+        collector = new MarketCollector("업비트", properties.upperCaseSymbols(), properties, new NoopTradeSource(),
+                new CandleAggregator(GRACE), repository, publisher, new UpbitCandleBackfillSource(upbitClient),
+                clock);
     }
 
     @AfterEach
