@@ -21,6 +21,7 @@ public class UserService {
 
     public MyInfoResponse getMyInfo(UUID userId) {
         return userRepository.findById(userId)
+                .filter(user -> !user.isWithdrawn())
                 .map(MyInfoResponse::from)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }

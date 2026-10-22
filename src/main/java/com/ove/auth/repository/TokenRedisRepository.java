@@ -1,9 +1,13 @@
 package com.ove.auth.repository;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -40,6 +44,23 @@ public class TokenRedisRepository {
      */
     public boolean deleteRefreshToken(UUID userId, String jti) {
         return Boolean.TRUE.equals(redisTemplate.delete(refreshKey(userId, jti)));
+    }
+
+    /**
+     * 사용자의 refresh 토큰을 기기 수와 상관없이 전부 지운다(refresh:{userId}:*).
+     * KEYS 대신 SCAN으로 훑어서 Redis를 오래 붙잡지 않는다. 지운 개수를 돌려준다.
+     */
+    public int deleteAllRefreshTokens(UUID userId) {
+        ScanOptions options = ScanOptions.scanOptions().match(REFRESH_KEY_PREFIX + userId + ":*").count(100).build();
+        List<String> keys = new ArrayList<>();
+        try (Cursor<String> cursor = redisTemplate.scan(options)) {
+            cursor.forEachRemaining(keys::add);
+        }
+        if (keys.isEmpty()) {
+            return 0;
+        }
+        Long deleted = redisTemplate.delete(keys);
+        return deleted == null ? 0 : deleted.intValue();
     }
 
     public void addToBlacklist(String jti, Duration ttl) {

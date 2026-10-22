@@ -30,6 +30,7 @@ import com.ove.global.security.TokenType;
 import com.ove.user.domain.TermsAgreement;
 import com.ove.user.domain.TermsType;
 import com.ove.user.domain.User;
+import com.ove.user.domain.UserStatus;
 import com.ove.user.dto.UserSummaryResponse;
 import com.ove.user.repository.TermsAgreementRepository;
 import com.ove.user.repository.UserRepository;
@@ -94,6 +95,7 @@ public class AuthService {
     // refresh 토큰은 응답 본문이 아니라 쿠키로 내려가므로, 컨트롤러가 쿠키를 만들 수 있게 따로 돌려준다.
     public AuthResult<LoginResponse> login(LoginRequest request) {
         User user = userRepository.findByEmail(normalizeEmail(request.getEmail()))
+                .filter(found -> !found.isWithdrawn()) // 탈퇴한 계정은 없는 계정과 똑같이 응답한다
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
@@ -130,7 +132,8 @@ public class AuthService {
         if (!tokenRedisRepository.deleteRefreshToken(userId, jti)) {
             throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
         }
-        if (!userRepository.existsById(userId)) {
+        // 탈퇴한 회원은 Redis의 refresh가 남아 있어도 재발급하지 않는다
+        if (!userRepository.existsByIdAndStatus(userId, UserStatus.ACTIVE)) {
             throw new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN);
         }
 
