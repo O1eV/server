@@ -43,6 +43,7 @@ import com.ove.global.security.JwtProvider;
 import com.ove.user.domain.TermsAgreement;
 import com.ove.user.domain.TermsType;
 import com.ove.user.domain.User;
+import com.ove.user.domain.UserStatus;
 import com.ove.user.repository.TermsAgreementRepository;
 import com.ove.user.repository.UserRepository;
 
@@ -178,6 +179,34 @@ class AuthServiceTest {
     }
 
     @Test
+    void 로그인_탈퇴한_계정은_없는_계정과_똑같이_INVALID_CREDENTIALS이고_비밀번호도_확인하지_않는다() {
+        User withdrawn = user(UUID.randomUUID());
+        withdrawn.withdraw(Instant.now());
+        given(userRepository.findByEmail("user@ove.com")).willReturn(Optional.of(withdrawn));
+
+        assertThatThrownBy(() -> authService.login(loginRequest("user@ove.com", "password123")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_CREDENTIALS);
+        verify(passwordEncoder, never()).matches(anyString(), anyString());
+        verify(tokenRedisRepository, never()).saveRefreshToken(any(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void 재발급_탈퇴한_회원이면_Redis에_refresh가_남아_있어도_INVALID_REFRESH_TOKEN() {
+        UUID userId = UUID.randomUUID();
+        IssuedToken refresh = jwtProvider.createRefreshToken(userId, false);
+        given(tokenRedisRepository.findRefreshToken(userId, refresh.jti()))
+                .willReturn(Optional.of(sha256(refresh.token())));
+        given(tokenRedisRepository.deleteRefreshToken(userId, refresh.jti())).willReturn(true);
+        given(userRepository.existsByIdAndStatus(userId, UserStatus.ACTIVE)).willReturn(false);
+
+        assertThatThrownBy(() -> authService.refresh(refresh.token()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
+        verify(tokenRedisRepository, never()).saveRefreshToken(any(), anyString(), anyString(), any());
+    }
+
+    @Test
     void 로그인_없는_이메일이면_INVALID_CREDENTIALS() {
         given(userRepository.findByEmail("none@ove.com")).willReturn(Optional.empty());
 
@@ -206,7 +235,7 @@ class AuthServiceTest {
         given(tokenRedisRepository.findRefreshToken(userId, oldRefresh.jti()))
                 .willReturn(Optional.of(sha256(oldRefresh.token())));
         given(tokenRedisRepository.deleteRefreshToken(userId, oldRefresh.jti())).willReturn(true);
-        given(userRepository.existsById(userId)).willReturn(true);
+        given(userRepository.existsByIdAndStatus(userId, UserStatus.ACTIVE)).willReturn(true);
 
         AuthResult<TokenResponse> result = authService.refresh(oldRefresh.token());
 
@@ -226,7 +255,7 @@ class AuthServiceTest {
             given(tokenRedisRepository.findRefreshToken(userId, oldRefresh.jti()))
                     .willReturn(Optional.of(sha256(oldRefresh.token())));
             given(tokenRedisRepository.deleteRefreshToken(userId, oldRefresh.jti())).willReturn(true);
-            given(userRepository.existsById(userId)).willReturn(true);
+            given(userRepository.existsByIdAndStatus(userId, UserStatus.ACTIVE)).willReturn(true);
 
             AuthResult<TokenResponse> result = authService.refresh(oldRefresh.token());
 
