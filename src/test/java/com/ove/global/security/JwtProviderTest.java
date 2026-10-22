@@ -37,11 +37,25 @@ class JwtProviderTest {
     void refresh_토큰은_REFRESH_타입이고_jti가_매번_다르다() {
         UUID userId = UUID.randomUUID();
 
-        IssuedToken first = jwtProvider.createRefreshToken(userId);
-        IssuedToken second = jwtProvider.createRefreshToken(userId);
+        IssuedToken first = jwtProvider.createRefreshToken(userId, false);
+        IssuedToken second = jwtProvider.createRefreshToken(userId, false);
 
         assertThat(jwtProvider.getTokenType(jwtProvider.parse(first.token()))).isEqualTo(TokenType.REFRESH);
         assertThat(first.jti()).isNotEqualTo(second.jti());
+    }
+
+    @Test
+    void refresh_토큰의_rememberMe_claim을_읽을_수_있다() {
+        UUID userId = UUID.randomUUID();
+
+        Claims remembered = jwtProvider.parse(jwtProvider.createRefreshToken(userId, true).token());
+        Claims session = jwtProvider.parse(jwtProvider.createRefreshToken(userId, false).token());
+        Claims access = jwtProvider.parse(jwtProvider.createAccessToken(userId).token());
+
+        assertThat(jwtProvider.isRememberMe(remembered)).isTrue();
+        assertThat(jwtProvider.isRememberMe(session)).isFalse();
+        // access 토큰에는 rememberMe claim이 없다
+        assertThat(jwtProvider.isRememberMe(access)).isFalse();
     }
 
     @Test

@@ -1,9 +1,13 @@
 package com.ove.global.security;
 
+import java.time.Duration;
+import java.util.List;
+
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -12,6 +16,10 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
 import com.ove.auth.repository.TokenRedisRepository;
 
@@ -23,7 +31,7 @@ import lombok.RequiredArgsConstructor;
  */
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties(JwtProperties.class)
+@EnableConfigurationProperties({JwtProperties.class, AuthCookieProperties.class, CorsProperties.class})
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -50,11 +58,15 @@ public class SecurityConfig {
     private final TokenRedisRepository tokenRedisRepository;
     private final JwtAuthenticationEntryPoint authenticationEntryPoint;
     private final JwtAccessDeniedHandler accessDeniedHandler;
+    private final CorsProperties corsProperties;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                // 인증은 Authorization 헤더(access)와 SameSite 쿠키(refresh)로 하므로 Spring 기본 CSRF 필터는 끄고,
+                // 쿠키를 읽는 refresh·logout만 OriginCheckFilter로 막는다.
                 .csrf(AbstractHttpConfigurer::disable)
+                .cors(Customizer.withDefaults())
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
@@ -71,9 +83,26 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 // 필터를 Bean으로 등록하면 서블릿 필터로도 한 번 더 등록되므로 여기서 직접 생성한다.
                 .addFilterBefore(new JwtAuthenticationFilter(jwtProvider, tokenRedisRepository),
-                        UsernamePasswordAuthenticationFilter.class);
+                        UsernamePasswordAuthenticationFilter.class)
+                // CORS 필터가 허용되지 않은 origin을 먼저 걸러 버리면 공통 envelope가 아닌 응답이 나가므로 그 앞에 둔다.
+                .addFilterBefore(new OriginCheckFilter(corsProperties, accessDeniedHandler), CorsFilter.class);
 
         return http.build();
+    }
+
+    // 프론트 origin에서 쿠키(credentials)를 포함한 요청을 허용한다. 메서드·헤더는 API가 쓰는 것만 연다.
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(corsProperties.allowedOrigins());
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+        configuration.setAllowCredentials(true);
+        configuration.setMaxAge(Duration.ofHours(1));
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", configuration);
+        return source;
     }
 
     @Bean
