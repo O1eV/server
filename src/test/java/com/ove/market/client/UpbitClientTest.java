@@ -7,7 +7,13 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.AfterEach;
@@ -63,6 +69,9 @@ class UpbitClientTest {
 
         assertUpstreamUnavailable(() -> client(Duration.ofSeconds(1), Duration.ZERO)
                 .getTickers(List.of("KRW-BTC")));
+
+        // 5xx는 다시 불러도 소용없어서 재시도하지 않는다.
+        assertThat(requestCount.get()).isEqualTo(1);
     }
 
     @Test
@@ -70,7 +79,7 @@ class UpbitClientTest {
     void readTimeout() throws IOException {
         startServer(200, MARKETS_JSON, 1500);
         UpbitClient client = new UpbitClient(baseUrl(), Duration.ofMillis(500), Duration.ofMillis(200),
-                Duration.ZERO);
+                Duration.ZERO, Duration.ZERO, Duration.ZERO);
 
         long startedAt = System.nanoTime();
         assertUpstreamUnavailable(client::getMarkets);
@@ -88,7 +97,7 @@ class UpbitClientTest {
         server = null;
 
         assertUpstreamUnavailable(() -> new UpbitClient(url, Duration.ofMillis(500), Duration.ofSeconds(1),
-                Duration.ZERO).getCandles("minutes/1", "KRW-BTC", null, 10));
+                Duration.ZERO, Duration.ZERO, Duration.ZERO).getCandles("minutes/1", "KRW-BTC", null, 10));
     }
 
     @Test
@@ -145,16 +154,173 @@ class UpbitClientTest {
     }
 
     @Test
-    @DisplayName("현재가와 캔들은 캐시하지 않는다")
-    void tickersAndCandlesAreNotCached() throws IOException {
+    @DisplayName("현재가는 TTL 동안 캐시되어 업비트를 한 번만 부른다")
+    void tickerCache() throws IOException {
         startServer(200, "[]", 0);
-        UpbitClient client = client(Duration.ofSeconds(1), Duration.ofMinutes(5));
+        UpbitClient client = client(Duration.ofSeconds(1), Duration.ZERO, Duration.ofMinutes(5), Duration.ZERO);
+
+        client.getTickers(List.of("KRW-BTC", "KRW-ETH"));
+        client.getTickers(List.of("KRW-BTC", "KRW-ETH"));
+        client.getTickers(List.of("KRW-BTC", "KRW-ETH"));
+
+        assertThat(requestCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("종목 묶음이 다르면 현재가 캐시도 따로 쓴다")
+    void tickerCachePerSymbolSet() throws IOException {
+        startServer(200, "[]", 0);
+        UpbitClient client = client(Duration.ofSeconds(1), Duration.ZERO, Duration.ofMinutes(5), Duration.ZERO);
+
+        client.getTickers(List.of("KRW-BTC"));
+        client.getTickers(List.of("KRW-BTC", "KRW-ETH"));
+        client.getTickers(List.of("KRW-BTC"));
+        client.getTickers(List.of("KRW-BTC", "KRW-ETH"));
+
+        assertThat(requestCount.get()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("현재가 캐시는 TTL이 지나면 다시 업비트를 부른다")
+    void tickerCacheExpires() throws Exception {
+        startServer(200, "[]", 0);
+        UpbitClient client = client(Duration.ofSeconds(1), Duration.ZERO, Duration.ofMillis(100), Duration.ZERO);
+
+        client.getTickers(List.of("KRW-BTC"));
+        Thread.sleep(250);
+        client.getTickers(List.of("KRW-BTC"));
+
+        assertThat(requestCount.get()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("현재가 TTL이 0이면 캐시하지 않고 매번 업비트를 부른다")
+    void tickerCacheDisabled() throws IOException {
+        startServer(200, "[]", 0);
+        UpbitClient client = client(Duration.ofSeconds(1), Duration.ZERO, Duration.ZERO, Duration.ZERO);
 
         client.getTickers(List.of("KRW-BTC"));
         client.getTickers(List.of("KRW-BTC"));
+
+        assertThat(requestCount.get()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("현재가 호출이 실패하면 캐시하지 않아서 다음 호출이 다시 업비트를 부른다")
+    void tickerFailureIsNotCached() throws IOException {
+        startServer(500, "error", 0);
+        UpbitClient client = client(Duration.ofSeconds(1), Duration.ZERO, Duration.ofMinutes(5), Duration.ZERO);
+
+        assertUpstreamUnavailable(() -> client.getTickers(List.of("KRW-BTC")));
+        assertUpstreamUnavailable(() -> client.getTickers(List.of("KRW-BTC")));
+
+        assertThat(requestCount.get()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("동시에 몰려온 현재가 요청도 업비트는 한 번만 부른다")
+    void tickerCacheUnderConcurrency() throws Exception {
+        startServer(200, "[]", 100);
+        UpbitClient client = client(Duration.ofSeconds(2), Duration.ZERO, Duration.ofMinutes(5), Duration.ZERO);
+        int threads = 20;
+        ExecutorService executor = Executors.newFixedThreadPool(threads);
+        CountDownLatch ready = new CountDownLatch(threads);
+        CountDownLatch go = new CountDownLatch(1);
+        try {
+            List<Future<?>> futures = new ArrayList<>();
+            for (int i = 0; i < threads; i++) {
+                futures.add(executor.submit(() -> {
+                    ready.countDown();
+                    go.await();
+                    return client.getTickers(List.of("KRW-BTC"));
+                }));
+            }
+            ready.await();
+            go.countDown();
+            for (Future<?> future : futures) {
+                future.get(5, TimeUnit.SECONDS);
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(requestCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("캔들은 캐시하지 않는다")
+    void candlesAreNotCached() throws IOException {
+        startServer(200, "[]", 0);
+        UpbitClient client = client(Duration.ofSeconds(1), Duration.ofMinutes(5), Duration.ofMinutes(5),
+                Duration.ZERO);
+
+        client.getCandles("minutes/1", "KRW-BTC", null, 10);
         client.getCandles("minutes/1", "KRW-BTC", null, 10);
 
-        assertThat(requestCount.get()).isEqualTo(3);
+        assertThat(requestCount.get()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("429를 받으면 백오프 후 한 번 재시도하고, 성공하면 결과를 돌려준다")
+    void retryOnceOnTooManyRequests() throws IOException {
+        startScriptedServer(new int[] {429, 200}, "[]");
+        UpbitClient client = client(Duration.ofSeconds(1), Duration.ZERO, Duration.ZERO, Duration.ofMillis(150));
+
+        long startedAt = System.nanoTime();
+        List<UpbitTickerResponse> tickers = client.getTickers(List.of("KRW-BTC"));
+        Duration elapsed = Duration.ofNanos(System.nanoTime() - startedAt);
+
+        assertThat(tickers).isEmpty();
+        assertThat(requestCount.get()).isEqualTo(2);
+        // 바로 다시 부르지 않고 설정한 백오프(150ms)만큼은 쉬었다가 불러야 한다.
+        assertThat(elapsed).isGreaterThanOrEqualTo(Duration.ofMillis(140));
+    }
+
+    @Test
+    @DisplayName("429가 재시도에서도 이어지면 UPSTREAM_UNAVAILABLE, 호출은 딱 두 번")
+    void tooManyRequestsTwice() throws IOException {
+        startScriptedServer(new int[] {429}, "[]");
+        UpbitClient client = client(Duration.ofSeconds(1), Duration.ZERO, Duration.ZERO, Duration.ofMillis(50));
+
+        assertUpstreamUnavailable(() -> client.getTickers(List.of("KRW-BTC")));
+
+        assertThat(requestCount.get()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("418(차단)은 재시도하지 않고 바로 UPSTREAM_UNAVAILABLE")
+    void blockedIsNotRetried() throws IOException {
+        startScriptedServer(new int[] {418}, "[]");
+        UpbitClient client = client(Duration.ofSeconds(1), Duration.ZERO, Duration.ZERO, Duration.ofMillis(50));
+
+        assertUpstreamUnavailable(() -> client.getTickers(List.of("KRW-BTC")));
+
+        assertThat(requestCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("429 재시도는 종목 목록·캔들 호출에도 적용된다")
+    void retryAppliesToMarketsAndCandles() throws IOException {
+        startScriptedServer(new int[] {429, 200, 429, 200}, MARKETS_JSON);
+        UpbitClient client = client(Duration.ofSeconds(1), Duration.ZERO, Duration.ZERO, Duration.ofMillis(50));
+
+        assertThat(client.getMarkets()).hasSize(1);
+        assertThat(client.getCandles("minutes/1", "KRW-BTC", null, 10)).hasSize(1);
+
+        assertThat(requestCount.get()).isEqualTo(4);
+    }
+
+    @Test
+    @DisplayName("429 재시도로 받은 현재가도 캐시된다")
+    void retriedTickersAreCached() throws IOException {
+        startScriptedServer(new int[] {429, 200}, "[]");
+        UpbitClient client = client(Duration.ofSeconds(1), Duration.ZERO, Duration.ofMinutes(5),
+                Duration.ofMillis(50));
+
+        client.getTickers(List.of("KRW-BTC"));
+        client.getTickers(List.of("KRW-BTC"));
+
+        assertThat(requestCount.get()).isEqualTo(2);
     }
 
     private void assertUpstreamUnavailable(Runnable call) {
@@ -163,8 +329,15 @@ class UpbitClientTest {
                 .extracting("errorCode").isEqualTo(ErrorCode.UPSTREAM_UNAVAILABLE);
     }
 
-    private UpbitClient client(Duration readTimeout, Duration cacheTtl) {
-        return new UpbitClient(baseUrl(), Duration.ofMillis(500), readTimeout, cacheTtl);
+    // 현재가 캐시는 끄고(TTL 0), 429 백오프는 짧게 둔 기본 클라이언트
+    private UpbitClient client(Duration readTimeout, Duration marketsCacheTtl) {
+        return client(readTimeout, marketsCacheTtl, Duration.ZERO, Duration.ofMillis(50));
+    }
+
+    private UpbitClient client(Duration readTimeout, Duration marketsCacheTtl, Duration tickerCacheTtl,
+                               Duration backoff) {
+        return new UpbitClient(baseUrl(), Duration.ofMillis(500), readTimeout, marketsCacheTtl, tickerCacheTtl,
+                backoff);
     }
 
     private String baseUrl() {
@@ -188,6 +361,26 @@ class UpbitClientTest {
                 Thread.currentThread().interrupt();
             } catch (IOException ignored) {
                 // 클라이언트가 타임아웃으로 먼저 끊은 경우
+            } finally {
+                exchange.close();
+            }
+        });
+        server.start();
+    }
+
+    // 요청마다 statuses를 순서대로 돌려주는 가짜 업비트 서버. 목록이 끝나면 마지막 상태를 계속 쓴다.
+    // 200이면 okBody, 그 외 상태면 짧은 에러 본문을 준다.
+    private void startScriptedServer(int[] statuses, String okBody) throws IOException {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            int index = Math.min(requestCount.getAndIncrement(), statuses.length - 1);
+            int status = statuses[index];
+            byte[] bytes = (status == 200 ? okBody : "{\"error\":{\"name\":\"error\"}}")
+                    .getBytes(StandardCharsets.UTF_8);
+            try {
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(status, bytes.length);
+                exchange.getResponseBody().write(bytes);
             } finally {
                 exchange.close();
             }
