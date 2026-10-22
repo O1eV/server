@@ -28,6 +28,7 @@ public enum ErrorCode {
     // 404
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
+    MARKET_NOT_FOUND(HttpStatus.NOT_FOUND, "종목을 찾을 수 없습니다."),
     PAPER_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "모의투자 계좌를 찾을 수 없습니다."),
 
     // 405
@@ -43,7 +44,10 @@ public enum ErrorCode {
     MARKET_PRICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "현재 시세를 조회할 수 없습니다."),
 
     // 500
-    INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다.");
+    INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다."),
+
+    // 502
+    UPSTREAM_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "외부 시세 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
 
     private final HttpStatus status;
     private final String message;

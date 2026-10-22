@@ -151,14 +151,30 @@ class AuthServiceTest {
         given(userRepository.findByEmail("user@ove.com")).willReturn(Optional.of(user));
         given(passwordEncoder.matches("password123", "hashed")).willReturn(true);
 
-        LoginResponse response = authService.login(loginRequest("USER@ove.com", "password123"));
+        AuthResult<LoginResponse> result = authService.login(loginRequest("USER@ove.com", "password123", false));
 
+        LoginResponse response = result.body();
         assertThat(response.getExpiresIn()).isEqualTo(1800);
         assertThat(response.getUser().getUserId()).isEqualTo(user.getId());
-        String refreshJti = jwtProvider.parse(response.getRefreshToken()).getId();
-        verify(tokenRedisRepository).saveRefreshToken(user.getId(), refreshJti, sha256(response.getRefreshToken()),
+        String refreshJti = jwtProvider.parse(result.refreshToken()).getId();
+        verify(tokenRedisRepository).saveRefreshToken(user.getId(), refreshJti, sha256(result.refreshToken()),
                 Duration.ofDays(14));
         assertThat(jwtProvider.parse(response.getAccessToken()).getSubject()).isEqualTo(user.getId().toString());
+    }
+
+    @Test
+    void 로그인_rememberMe는_결과와_refresh_토큰_claim에_담긴다() {
+        User user = user(UUID.randomUUID());
+        given(userRepository.findByEmail("user@ove.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("password123", "hashed")).willReturn(true);
+
+        AuthResult<LoginResponse> remembered = authService.login(loginRequest("user@ove.com", "password123", true));
+        AuthResult<LoginResponse> session = authService.login(loginRequest("user@ove.com", "password123", false));
+
+        assertThat(remembered.rememberMe()).isTrue();
+        assertThat(jwtProvider.isRememberMe(jwtProvider.parse(remembered.refreshToken()))).isTrue();
+        assertThat(session.rememberMe()).isFalse();
+        assertThat(jwtProvider.isRememberMe(jwtProvider.parse(session.refreshToken()))).isFalse();
     }
 
     @Test
@@ -186,25 +202,48 @@ class AuthServiceTest {
     @Test
     void 재발급_성공시_기존_refresh를_지우고_새_쌍을_저장한다() {
         UUID userId = UUID.randomUUID();
-        IssuedToken oldRefresh = jwtProvider.createRefreshToken(userId);
+        IssuedToken oldRefresh = jwtProvider.createRefreshToken(userId, false);
         given(tokenRedisRepository.findRefreshToken(userId, oldRefresh.jti()))
                 .willReturn(Optional.of(sha256(oldRefresh.token())));
         given(tokenRedisRepository.deleteRefreshToken(userId, oldRefresh.jti())).willReturn(true);
         given(userRepository.existsById(userId)).willReturn(true);
 
-        TokenResponse response = authService.refresh(oldRefresh.token());
+        AuthResult<TokenResponse> result = authService.refresh(oldRefresh.token());
 
+        assertThat(result.body().getExpiresIn()).isEqualTo(1800);
         verify(tokenRedisRepository).deleteRefreshToken(userId, oldRefresh.jti());
-        String newJti = jwtProvider.parse(response.getRefreshToken()).getId();
+        String newJti = jwtProvider.parse(result.refreshToken()).getId();
         assertThat(newJti).isNotEqualTo(oldRefresh.jti());
-        verify(tokenRedisRepository).saveRefreshToken(eq(userId), eq(newJti), eq(sha256(response.getRefreshToken())),
+        verify(tokenRedisRepository).saveRefreshToken(eq(userId), eq(newJti), eq(sha256(result.refreshToken())),
                 any());
+    }
+
+    @Test
+    void 재발급해도_rememberMe_모드가_그대로_이어진다() {
+        for (boolean rememberMe : new boolean[] {true, false}) {
+            UUID userId = UUID.randomUUID();
+            IssuedToken oldRefresh = jwtProvider.createRefreshToken(userId, rememberMe);
+            given(tokenRedisRepository.findRefreshToken(userId, oldRefresh.jti()))
+                    .willReturn(Optional.of(sha256(oldRefresh.token())));
+            given(tokenRedisRepository.deleteRefreshToken(userId, oldRefresh.jti())).willReturn(true);
+            given(userRepository.existsById(userId)).willReturn(true);
+
+            AuthResult<TokenResponse> result = authService.refresh(oldRefresh.token());
+
+            assertThat(result.rememberMe()).isEqualTo(rememberMe);
+            assertThat(jwtProvider.isRememberMe(jwtProvider.parse(result.refreshToken()))).isEqualTo(rememberMe);
+        }
+    }
+
+    @Test
+    void 재발급_쿠키가_없어_토큰이_null이면_INVALID_REFRESH_TOKEN() {
+        assertInvalidRefresh(null);
     }
 
     @Test
     void 재발급_Redis에_없는_토큰이면_INVALID_REFRESH_TOKEN() {
         UUID userId = UUID.randomUUID();
-        IssuedToken refresh = jwtProvider.createRefreshToken(userId);
+        IssuedToken refresh = jwtProvider.createRefreshToken(userId, false);
         given(tokenRedisRepository.findRefreshToken(userId, refresh.jti())).willReturn(Optional.empty());
 
         assertInvalidRefresh(refresh.token());
@@ -213,7 +252,7 @@ class AuthServiceTest {
     @Test
     void 재발급_저장된_해시와_다르면_INVALID_REFRESH_TOKEN() {
         UUID userId = UUID.randomUUID();
-        IssuedToken refresh = jwtProvider.createRefreshToken(userId);
+        IssuedToken refresh = jwtProvider.createRefreshToken(userId, false);
         given(tokenRedisRepository.findRefreshToken(userId, refresh.jti())).willReturn(Optional.of("other-hash"));
 
         assertInvalidRefresh(refresh.token());
@@ -223,7 +262,7 @@ class AuthServiceTest {
     @Test
     void 재발급_동시요청으로_이미_삭제됐으면_INVALID_REFRESH_TOKEN() {
         UUID userId = UUID.randomUUID();
-        IssuedToken refresh = jwtProvider.createRefreshToken(userId);
+        IssuedToken refresh = jwtProvider.createRefreshToken(userId, false);
         given(tokenRedisRepository.findRefreshToken(userId, refresh.jti()))
                 .willReturn(Optional.of(sha256(refresh.token())));
         given(tokenRedisRepository.deleteRefreshToken(userId, refresh.jti())).willReturn(false);
@@ -241,7 +280,7 @@ class AuthServiceTest {
         JwtProvider expiredProvider = new JwtProvider(
                 new JwtProperties(SECRET, Duration.ofMinutes(30), Duration.ofSeconds(-10)));
 
-        assertInvalidRefresh(expiredProvider.createRefreshToken(UUID.randomUUID()).token());
+        assertInvalidRefresh(expiredProvider.createRefreshToken(UUID.randomUUID(), false).token());
     }
 
     @Test
@@ -255,7 +294,7 @@ class AuthServiceTest {
     void 로그아웃시_access를_블랙리스트에_넣고_refresh를_지운다() {
         UUID userId = UUID.randomUUID();
         IssuedToken access = jwtProvider.createAccessToken(userId);
-        IssuedToken refresh = jwtProvider.createRefreshToken(userId);
+        IssuedToken refresh = jwtProvider.createRefreshToken(userId, false);
         AuthUser authUser = new AuthUser(userId, access.jti(), access.expiresAt());
 
         authService.logout(authUser, refresh.token());
@@ -270,7 +309,7 @@ class AuthServiceTest {
     void 로그아웃시_다른_사용자의_refresh는_지우지_않는다() {
         UUID userId = UUID.randomUUID();
         AuthUser authUser = new AuthUser(userId, "access-jti", Instant.now().plusSeconds(600));
-        IssuedToken othersRefresh = jwtProvider.createRefreshToken(UUID.randomUUID());
+        IssuedToken othersRefresh = jwtProvider.createRefreshToken(UUID.randomUUID(), false);
 
         authService.logout(authUser, othersRefresh.token());
 
@@ -283,6 +322,16 @@ class AuthServiceTest {
         AuthUser authUser = new AuthUser(UUID.randomUUID(), "access-jti", Instant.now().plusSeconds(600));
 
         authService.logout(authUser, "garbage");
+
+        verify(tokenRedisRepository).addToBlacklist(eq("access-jti"), any());
+        verify(tokenRedisRepository, never()).deleteRefreshToken(any(), anyString());
+    }
+
+    @Test
+    void 로그아웃시_refresh_쿠키가_없어도_access는_블랙리스트에_넣는다() {
+        AuthUser authUser = new AuthUser(UUID.randomUUID(), "access-jti", Instant.now().plusSeconds(600));
+
+        authService.logout(authUser, null);
 
         verify(tokenRedisRepository).addToBlacklist(eq("access-jti"), any());
         verify(tokenRedisRepository, never()).deleteRefreshToken(any(), anyString());
@@ -308,7 +357,11 @@ class AuthServiceTest {
     }
 
     private LoginRequest loginRequest(String email, String password) {
-        return LoginRequest.builder().email(email).password(password).build();
+        return loginRequest(email, password, false);
+    }
+
+    private LoginRequest loginRequest(String email, String password, boolean rememberMe) {
+        return LoginRequest.builder().email(email).password(password).rememberMe(rememberMe).build();
     }
 
     private User user(UUID id) {
