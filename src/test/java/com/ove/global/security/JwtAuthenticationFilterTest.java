@@ -90,7 +90,7 @@ class JwtAuthenticationFilterTest {
     @Test
     void refresh_토큰을_access_자리에_쓰면_UNAUTHORIZED를_남긴다() throws Exception {
         MockHttpServletRequest request = requestWithBearer(
-                jwtProvider.createRefreshToken(UUID.randomUUID()).token());
+                jwtProvider.createRefreshToken(UUID.randomUUID(), false).token());
 
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
 
