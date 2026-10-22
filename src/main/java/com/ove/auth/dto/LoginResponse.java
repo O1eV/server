@@ -10,7 +10,6 @@ import lombok.Getter;
 public class LoginResponse {
 
     private final String accessToken;
-    private final String refreshToken;
     // access 토큰 유효 시간(초)
     private final long expiresIn;
     private final UserSummaryResponse user;
