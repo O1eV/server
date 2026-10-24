@@ -27,11 +27,12 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
-public class AuthController {
+public class AuthController implements AuthControllerDocs {
 
     private final AuthService authService;
     private final RefreshCookieFactory refreshCookieFactory;
 
+    @Override
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<RegisterResponse>> register(@Valid @RequestBody RegisterRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -40,6 +41,7 @@ public class AuthController {
     }
 
     // refresh 토큰은 응답 본문에 넣지 않고 HttpOnly 쿠키(Set-Cookie)로만 내려준다.
+    @Override
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
         AuthResult<LoginResponse> result = authService.login(request);
@@ -50,6 +52,7 @@ public class AuthController {
     }
 
     // 요청 본문 없이 쿠키의 refresh 토큰으로 재발급하고, 쿠키도 새 토큰으로 교체한다.
+    @Override
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<TokenResponse>> refresh(HttpServletRequest request) {
         String refreshToken = refreshCookieFactory.read(request).orElse(null);
@@ -61,6 +64,7 @@ public class AuthController {
     }
 
     // 쿠키가 없거나 잘못돼도 access 토큰 블랙리스트 처리 후 200으로 끝내고, 쿠키는 항상 지운다.
+    @Override
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout(@AuthenticationPrincipal AuthUser authUser,
                                                     HttpServletRequest request) {
