@@ -49,3 +49,11 @@ upbit:
   ticker-cache-ttl: 1500ms
   # 429(호출 한도 초과)를 받으면 이만큼 쉬었다가 한 번만 다시 시도한다.
   rate-limit-backoff: 300ms
+
+springdoc:
+  # Swagger UI(/swagger-ui.html)와 OpenAPI 문서(/v3/api-docs) 노출 여부. 기본은 둘 다 켜짐(로컬 개발용).
+  # 외부에 공개되는 환경에서는 환경변수 SWAGGER_UI_ENABLED, API_DOCS_ENABLED를 false로 줘서 끌 수 있다(운영 값은 여기서 정하지 않는다).
+  swagger-ui:
+    enabled: ${SWAGGER_UI_ENABLED:true}
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:true}
