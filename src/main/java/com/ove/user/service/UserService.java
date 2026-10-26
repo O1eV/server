@@ -9,6 +9,7 @@ import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
 import com.ove.user.dto.MyInfoResponse;
 import com.ove.user.repository.UserRepository;
+import com.ove.watchlist.repository.WatchlistRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -18,10 +19,11 @@ import lombok.RequiredArgsConstructor;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final WatchlistRepository watchlistRepository;
 
     public MyInfoResponse getMyInfo(UUID userId) {
         return userRepository.findById(userId)
-                .map(MyInfoResponse::from)
+                .map(user -> MyInfoResponse.from(user, watchlistRepository.countByUserId(userId)))
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 }

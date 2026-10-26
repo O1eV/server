@@ -74,3 +74,6 @@ collector:
     # KIWOOM_MINUTE_BAR_LABEL=START 또는 END를 주고 KIWOOM_BACKFILL_ENABLED=true로 켠다.
     backfill-enabled: ${KIWOOM_BACKFILL_ENABLED:false}
     minute-bar-label: ${KIWOOM_MINUTE_BAR_LABEL:}
+watchlist:
+  # 회원 한 명이 등록할 수 있는 관심 종목 최대 개수
+  max-size: 20

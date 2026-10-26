@@ -20,12 +20,16 @@ import com.ove.global.exception.ErrorCode;
 import com.ove.user.domain.User;
 import com.ove.user.dto.MyInfoResponse;
 import com.ove.user.repository.UserRepository;
+import com.ove.watchlist.repository.WatchlistRepository;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private WatchlistRepository watchlistRepository;
 
     @InjectMocks
     private UserService userService;
