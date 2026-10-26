@@ -6,7 +6,7 @@ plugins {
 
 group = 'com.ove'
 version = '0.0.1-SNAPSHOT'
-description = 'O1vE'
+description = 'O1eV'
 
 java {
 	toolchain {
@@ -19,6 +19,7 @@ repositories {
 }
 
 dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-websocket'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
