@@ -10,6 +10,7 @@ import static org.mockito.BDDMockito.then;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -155,12 +156,21 @@ class PaperTradingServiceTest {
         PaperHolding holding = holding("KRW-ETH", "3", "1000");
         given(paperAccountRepository.findByUserId(USER_ID)).willReturn(Optional.of(account));
         given(paperHoldingRepository.findAllByPaperAccountUserIdOrderBySymbolAsc(USER_ID)).willReturn(List.of(holding));
+        given(marketPriceProvider.getLatestPrices(List.of("KRW-ETH")))
+                .willReturn(Map.of("KRW-ETH", new BigDecimal("1500")));
 
         PaperPortfolioResponse portfolio = paperTradingService.getPortfolio(USER_ID);
 
         assertThat(portfolio.getCashBalance()).isEqualByComparingTo("10000000");
         assertThat(portfolio.getTotalPurchaseAmount()).isEqualByComparingTo("3000");
-        assertThat(portfolio.getTotalAssetAmount()).isEqualByComparingTo("10003000");
+        assertThat(portfolio.getTotalEvaluationAmount()).isEqualByComparingTo("4500");
+        assertThat(portfolio.getTotalProfitLoss()).isEqualByComparingTo("1500");
+        assertThat(portfolio.getTotalReturnRate()).isEqualByComparingTo("50.0000");
+        assertThat(portfolio.getTotalAssetAmount()).isEqualByComparingTo("10004500");
+        assertThat(portfolio.getHoldings().getFirst().getCurrentPrice()).isEqualByComparingTo("1500");
+        assertThat(portfolio.getHoldings().getFirst().getEvaluationAmount()).isEqualByComparingTo("4500");
+        assertThat(portfolio.getHoldings().getFirst().getProfitLoss()).isEqualByComparingTo("1500");
+        assertThat(portfolio.getHoldings().getFirst().getReturnRate()).isEqualByComparingTo("50.0000");
 
         given(paperAccountRepository.findWithLockByUserId(USER_ID)).willReturn(Optional.of(account));
         PaperPortfolioResponse reset = paperTradingService.reset(USER_ID);

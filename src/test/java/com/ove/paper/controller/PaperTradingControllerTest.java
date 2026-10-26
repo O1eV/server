@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -47,6 +48,8 @@ class PaperTradingControllerTest extends IntegrationTestSupport {
     @BeforeEach
     void setUpMarketPrice() {
         given(marketPriceProvider.getLatestPrice(anyString())).willReturn(new BigDecimal("1000"));
+        given(marketPriceProvider.getLatestPrices(List.of("KRW-BTC")))
+                .willReturn(Map.of("KRW-BTC", new BigDecimal("1000")));
     }
 
     @Test
@@ -71,11 +74,20 @@ class PaperTradingControllerTest extends IntegrationTestSupport {
                 .andExpect(jsonPath("$.data.currency").value("KRW")));
         assertThat(portfolio.get("cashBalance").decimalValue()).isEqualByComparingTo("9999000");
         assertThat(portfolio.get("totalPurchaseAmount").decimalValue()).isEqualByComparingTo("1000");
+        assertThat(portfolio.get("totalEvaluationAmount").decimalValue()).isEqualByComparingTo("1000");
+        assertThat(portfolio.get("totalProfitLoss").decimalValue()).isEqualByComparingTo("0");
+        assertThat(portfolio.get("totalReturnRate").decimalValue()).isEqualByComparingTo("0.0000");
         assertThat(portfolio.get("totalAssetAmount").decimalValue()).isEqualByComparingTo("10000000");
         assertThat(portfolio.get("holdings").get(0).get("symbol").asString()).isEqualTo("KRW-BTC");
         assertThat(portfolio.get("holdings").get(0).get("quantity").decimalValue()).isEqualByComparingTo("1");
         assertThat(portfolio.get("holdings").get(0).get("averagePurchasePrice").decimalValue())
                 .isEqualByComparingTo("1000");
+        assertThat(portfolio.get("holdings").get(0).get("currentPrice").decimalValue()).isEqualByComparingTo("1000");
+        assertThat(portfolio.get("holdings").get(0).get("evaluationAmount").decimalValue())
+                .isEqualByComparingTo("1000");
+        assertThat(portfolio.get("holdings").get(0).get("profitLoss").decimalValue()).isEqualByComparingTo("0");
+        assertThat(portfolio.get("holdings").get(0).get("returnRate").decimalValue())
+                .isEqualByComparingTo("0.0000");
 
         mockMvc.perform(get("/api/paper/orders")
                         .header("Authorization", bearer(accessToken))

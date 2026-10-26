@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -57,7 +58,9 @@ public class PaperTradingService {
     public PaperPortfolioResponse getPortfolio(UUID userId) {
         PaperAccount account = getAccount(userId);
         List<PaperHolding> holdings = paperHoldingRepository.findAllByPaperAccountUserIdOrderBySymbolAsc(userId);
-        return PaperPortfolioResponse.from(account, holdings);
+        List<String> symbols = holdings.stream().map(PaperHolding::getSymbol).toList();
+        Map<String, BigDecimal> currentPrices = marketPriceProvider.getLatestPrices(symbols);
+        return PaperPortfolioResponse.from(account, holdings, currentPrices);
     }
 
     public PaperOrderHistoryResponse getOrders(UUID userId, String symbol, int page, int size) {
@@ -105,7 +108,7 @@ public class PaperTradingService {
         paperOrderRepository.deleteAllByUserId(userId);
         paperHoldingRepository.deleteAllByUserId(userId);
         account.reset(initialBalance);
-        return PaperPortfolioResponse.from(account, List.of());
+        return PaperPortfolioResponse.from(account, List.of(), Map.of());
     }
 
     private void buy(PaperAccount account, String symbol, BigDecimal quantity, BigDecimal price, BigDecimal amount) {

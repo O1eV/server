@@ -1,7 +1,9 @@
 package com.ove.market.service;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
@@ -26,20 +28,38 @@ public class UpbitMarketPriceProvider implements MarketPriceProvider {
 
     @Override
     public BigDecimal getLatestPrice(String symbol) {
+        return getLatestPrices(List.of(symbol)).get(symbol);
+    }
+
+    @Override
+    public Map<String, BigDecimal> getLatestPrices(List<String> symbols) {
+        if (symbols.isEmpty()) {
+            return Map.of();
+        }
+
         List<UpbitTickerResponse> tickers;
         try {
-            tickers = upbitClient.getTickers(List.of(symbol));
+            tickers = upbitClient.getTickers(symbols);
         } catch (BusinessException e) {
-            // 업비트 호출 실패(UPSTREAM_UNAVAILABLE)는 주문 쪽에서는 "현재 시세를 조회할 수 없음"으로 보여 준다.
+            // 업비트 호출 실패(UPSTREAM_UNAVAILABLE)는 모의 거래에서 "현재 시세를 조회할 수 없음"으로 보여 준다.
             if (e.getErrorCode() == ErrorCode.UPSTREAM_UNAVAILABLE) {
                 throw new BusinessException(ErrorCode.MARKET_PRICE_UNAVAILABLE);
             }
             throw e;
         }
-        if (tickers == null || tickers.size() != 1 || tickers.get(0).getTradePrice() == null
-                || tickers.get(0).getTradePrice().signum() <= 0) {
+
+        Map<String, BigDecimal> prices = new HashMap<>();
+        if (tickers != null) {
+            for (UpbitTickerResponse ticker : tickers) {
+                if (ticker != null && symbols.contains(ticker.getMarket()) && ticker.getTradePrice() != null
+                        && ticker.getTradePrice().signum() > 0) {
+                    prices.put(ticker.getMarket(), ticker.getTradePrice());
+                }
+            }
+        }
+        if (prices.size() != symbols.stream().distinct().count()) {
             throw new BusinessException(ErrorCode.MARKET_PRICE_UNAVAILABLE);
         }
-        return tickers.get(0).getTradePrice();
+        return Map.copyOf(prices);
     }
 }
