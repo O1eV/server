@@ -8,8 +8,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,7 +46,7 @@ class UserWithdrawControllerTest extends IntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("정상 탈퇴: 200, 쿠키 삭제, 모든 기기의 refresh 삭제, access 블랙리스트, 개인정보 익명화, 모의계좌 삭제, 약관 이력 보존")
+    @DisplayName("정상 탈퇴: 200, 쿠키 삭제, 모든 기기의 refresh 삭제, access 블랙리스트, 개인정보 익명화, 모의계좌 보존, 약관 이력 보존")
     void withdrawsSuccessfully() throws Exception {
         register("user@ove.com", "오브");
         UUID userId = userRepository.findByEmail("user@ove.com").orElseThrow().getId();
@@ -72,6 +78,8 @@ class UserWithdrawControllerTest extends IntegrationTestSupport {
         String jti = jwtProvider.parse(phone.accessToken()).getId();
         assertThat(redisTemplate.hasKey("blacklist:" + jti)).isTrue();
         assertThat(redisTemplate.getExpire("blacklist:" + jti)).isBetween(1L, 1800L);
+        // 다른 기기의 access를 막는 탈퇴 표시: TTL은 access 최대 수명(30분)
+        assertThat(redisTemplate.getExpire("withdrawn:" + userId)).isBetween(1700L, 1800L);
 
         // DB: soft delete + 개인정보 익명화
         User user = userRepository.findById(userId).orElseThrow();
@@ -80,7 +88,8 @@ class UserWithdrawControllerTest extends IntegrationTestSupport {
         assertThat(user.getEmail()).isEqualTo("withdrawn+" + userId + "@deleted.invalid");
         assertThat(user.getNickname()).startsWith("탈퇴").isNotEqualTo("오브");
         assertThat(user.getPassword()).isEqualTo("!withdrawn");
-        assertThat(paperAccountRepository.findByUserId(userId)).isEmpty();
+        // 모의계좌는 개인정보가 없고 #19의 주문·보유가 참조하므로 지우지 않는다
+        assertThat(paperAccountRepository.findByUserId(userId)).isPresent();
         // 약관 동의 이력은 지우지 않고 user_id로 남는다
         assertThat(termsAgreementRepository.findAllByUserId(userId)).hasSize(3);
 
@@ -97,10 +106,55 @@ class UserWithdrawControllerTest extends IntegrationTestSupport {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("INVALID_CREDENTIALS"));
 
-        // 한계: 다른 기기에서 발급된 access는 최대 30분 동안 필터를 통과하지만, 서비스가 탈퇴한 회원으로 보고 404로 막는다
+        // 다른 기기에서 발급된 access도 탈퇴 직후부터 필터에서 401로 막힌다 (어떤 인증 API든 마찬가지)
         mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + laptop.accessToken()))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("USER_NOT_FOUND"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+        withdraw(laptop.accessToken(), PASSWORD)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + laptop.accessToken())
+                        .header("Origin", "http://localhost:5173"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("같은 회원이 동시에 여러 번 탈퇴해도 500 없이 1건만 200, 나머지는 404")
+    void concurrentWithdrawalsDoNotFail() throws Exception {
+        register("user@ove.com", "오브");
+        UUID userId = userRepository.findByEmail("user@ove.com").orElseThrow().getId();
+        int threads = 4;
+        List<String> tokens = new ArrayList<>();
+        for (int i = 0; i < threads; i++) {
+            tokens.add(login("user@ove.com").accessToken());
+        }
+
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        List<Integer> statuses = new ArrayList<>();
+        try {
+            CountDownLatch ready = new CountDownLatch(threads);
+            CountDownLatch go = new CountDownLatch(1);
+            List<Future<Integer>> futures = new ArrayList<>();
+            for (String token : tokens) {
+                futures.add(pool.submit(() -> {
+                    ready.countDown();
+                    go.await();
+                    return withdraw(token, PASSWORD).andReturn().getResponse().getStatus();
+                }));
+            }
+            ready.await();
+            go.countDown();
+            for (Future<Integer> future : futures) {
+                statuses.add(future.get());
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertThat(statuses.stream().filter(s -> s == 200).count()).isEqualTo(1);
+        assertThat(statuses.stream().filter(s -> s == 404).count()).isEqualTo(threads - 1);
+        assertThat(userRepository.findById(userId).orElseThrow().getStatus()).isEqualTo(UserStatus.WITHDRAWN);
     }
 
     @Test
@@ -117,17 +171,17 @@ class UserWithdrawControllerTest extends IntegrationTestSupport {
     }
 
     @Test
-    @DisplayName("이미 탈퇴한 회원이 아직 유효한 다른 access로 다시 요청하면 404 USER_NOT_FOUND")
-    void secondWithdrawalIsNotFound() throws Exception {
+    @DisplayName("이미 탈퇴한 회원이 아직 유효한 다른 access로 다시 요청하면 필터에서 401 (서비스까지 가지 않는다)")
+    void secondWithdrawalIsUnauthorized() throws Exception {
         register("user@ove.com", "오브");
         Session phone = login("user@ove.com");
         Session laptop = login("user@ove.com");
         withdraw(phone.accessToken(), PASSWORD).andExpect(status().isOk());
 
         withdraw(laptop.accessToken(), PASSWORD)
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.statusCode").value(404))
-                .andExpect(jsonPath("$.error").value("USER_NOT_FOUND"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.statusCode").value(401))
+                .andExpect(jsonPath("$.error").value("UNAUTHORIZED"))
                 .andExpect(jsonPath("$.data").isEmpty());
     }
 
@@ -141,6 +195,7 @@ class UserWithdrawControllerTest extends IntegrationTestSupport {
         withdraw(session.accessToken(), "wrong-password1")
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("INVALID_CREDENTIALS"))
+                .andExpect(jsonPath("$.message").value("비밀번호가 일치하지 않습니다."))
                 .andExpect(jsonPath("$.data").isEmpty())
                 .andExpect(header().doesNotExist("Set-Cookie"));
 

@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
  * - refresh:{userId}:{jti} = refresh 토큰의 SHA-256 해시 (TTL = refresh 만료까지)
  *   기기마다 jti가 달라 다중 기기 로그인을 허용한다.
  * - blacklist:{jti} = 로그아웃된 access 토큰 (TTL = access 남은 만료 시간)
+ * - withdrawn:{userId} = 탈퇴한 회원 (TTL = access 토큰 최대 수명). 탈퇴 전에 발급돼 다른 기기에 남은 access를 막는다.
  */
 @Repository
 @RequiredArgsConstructor
@@ -27,6 +28,8 @@ public class TokenRedisRepository {
     private static final String REFRESH_KEY_PREFIX = "refresh:";
     private static final String BLACKLIST_KEY_PREFIX = "blacklist:";
     private static final String BLACKLIST_VALUE = "logout";
+    private static final String WITHDRAWN_KEY_PREFIX = "withdrawn:";
+    private static final String WITHDRAWN_VALUE = "withdrawn";
 
     private final StringRedisTemplate redisTemplate;
 
@@ -73,6 +76,21 @@ public class TokenRedisRepository {
 
     public boolean isBlacklisted(String jti) {
         return Boolean.TRUE.equals(redisTemplate.hasKey(BLACKLIST_KEY_PREFIX + jti));
+    }
+
+    /**
+     * 탈퇴한 회원 표시를 남긴다. TTL은 이미 발급된 access 토큰이 모두 만료되는 시간(access 최대 수명)이면 충분하다.
+     */
+    public void markWithdrawn(UUID userId, Duration ttl) {
+        redisTemplate.opsForValue().set(WITHDRAWN_KEY_PREFIX + userId, WITHDRAWN_VALUE, ttl);
+    }
+
+    /**
+     * access 토큰이 더 이상 쓸 수 없는 상태인지(블랙리스트 또는 탈퇴한 회원) Redis 한 번 호출로 확인한다.
+     */
+    public boolean isRevoked(String jti, UUID userId) {
+        Long existing = redisTemplate.countExistingKeys(List.of(BLACKLIST_KEY_PREFIX + jti, WITHDRAWN_KEY_PREFIX + userId));
+        return existing != null && existing > 0;
     }
 
     private String refreshKey(UUID userId, String jti) {

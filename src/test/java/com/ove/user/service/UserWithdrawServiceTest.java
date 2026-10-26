@@ -18,11 +18,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -31,11 +31,11 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionSynchronizationUtils;
 
-import com.ove.account.service.PaperAccountService;
 import com.ove.auth.repository.TokenRedisRepository;
 import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
 import com.ove.global.security.AuthUser;
+import com.ove.global.security.JwtProperties;
 import com.ove.user.domain.User;
 import com.ove.user.domain.UserStatus;
 import com.ove.user.repository.UserRepository;
@@ -44,18 +44,23 @@ import com.ove.user.repository.UserRepository;
 class UserWithdrawServiceTest {
 
     private static final String PASSWORD = "password123";
+    private static final Duration ACCESS_TTL = Duration.ofMinutes(30);
 
     @Mock
     private UserRepository userRepository;
     @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
-    private PaperAccountService paperAccountService;
-    @Mock
     private TokenRedisRepository tokenRedisRepository;
 
-    @InjectMocks
     private UserWithdrawService service;
+
+    @BeforeEach
+    void setUp() {
+        service = new UserWithdrawService(userRepository, passwordEncoder, tokenRedisRepository,
+                new JwtProperties("test-secret-key-for-ove-backend-must-be-at-least-32-bytes",
+                        ACCESS_TTL, Duration.ofDays(14)));
+    }
 
     @AfterEach
     void clearSynchronization() {
@@ -65,11 +70,11 @@ class UserWithdrawServiceTest {
     }
 
     @Test
-    @DisplayName("정상 탈퇴: 회원은 WITHDRAWN으로 바뀌고 개인정보가 익명화되며 모의계좌 삭제를 요청한다")
+    @DisplayName("정상 탈퇴: 회원은 WITHDRAWN으로 바뀌고 개인정보가 익명화된다 (모의계좌는 지우지 않는다)")
     void withdrawsAndAnonymizes() {
         User user = user();
         AuthUser authUser = authUser(user.getId());
-        given(userRepository.findById(user.getId())).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(user.getId())).willReturn(Optional.of(user));
         given(passwordEncoder.matches(PASSWORD, "hashed")).willReturn(true);
         Instant before = Instant.now();
 
@@ -85,7 +90,6 @@ class UserWithdrawServiceTest {
         assertThat(user.getNickname()).isNotEqualTo("오브");
         // 비밀번호 해시도 BCrypt 형식이 아닌 값으로 덮어써서 어떤 입력과도 일치하지 않는다
         assertThat(user.getPassword()).isEqualTo("!withdrawn");
-        verify(paperAccountService).deleteAccountOf(user.getId());
     }
 
     @Test
@@ -101,33 +105,35 @@ class UserWithdrawServiceTest {
     }
 
     @Test
-    @DisplayName("비밀번호가 틀리면 INVALID_CREDENTIALS이고 회원·계좌·Redis 어느 것도 바뀌지 않는다")
+    @DisplayName("비밀번호가 틀리면 탈퇴 전용 메시지의 INVALID_CREDENTIALS이고 회원·Redis 어느 것도 바뀌지 않는다")
     void wrongPasswordChangesNothing() {
         User user = user();
-        given(userRepository.findById(user.getId())).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(user.getId())).willReturn(Optional.of(user));
         given(passwordEncoder.matches("wrong", "hashed")).willReturn(false);
         TransactionSynchronizationManager.initSynchronization();
 
         assertThatThrownBy(() -> service.withdraw(authUser(user.getId()), "wrong"))
                 .isInstanceOfSatisfying(BusinessException.class,
-                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_CREDENTIALS));
+                        e -> {
+                            assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_CREDENTIALS);
+                            assertThat(e.getMessage()).isEqualTo("비밀번호가 일치하지 않습니다.");
+                        });
 
         assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
         assertThat(user.getEmail()).isEqualTo("user@ove.com");
         assertThat(user.getDeletedAt()).isNull();
-        verifyNoInteractions(paperAccountService);
-        TransactionSynchronizationUtils.triggerAfterCommit();
+                TransactionSynchronizationUtils.triggerAfterCommit();
         verifyNoInteractions(tokenRedisRepository);
     }
 
     @Test
-    @DisplayName("이미 탈퇴한 회원과 없는 회원은 USER_NOT_FOUND이고 비밀번호도 확인하지 않는다")
+    @DisplayName("이미 탈퇴한 회원(동시 요청의 뒤쪽 포함)과 없는 회원은 USER_NOT_FOUND이고 비밀번호도 확인하지 않는다")
     void alreadyWithdrawnOrMissingIsNotFound() {
         User withdrawn = user();
         withdrawn.withdraw(Instant.now());
-        given(userRepository.findById(withdrawn.getId())).willReturn(Optional.of(withdrawn));
+        given(userRepository.findByIdForUpdate(withdrawn.getId())).willReturn(Optional.of(withdrawn));
         UUID missingId = UUID.randomUUID();
-        given(userRepository.findById(missingId)).willReturn(Optional.empty());
+        given(userRepository.findByIdForUpdate(missingId)).willReturn(Optional.empty());
 
         for (UUID id : new UUID[] {withdrawn.getId(), missingId}) {
             assertThatThrownBy(() -> service.withdraw(authUser(id), PASSWORD))
@@ -135,7 +141,7 @@ class UserWithdrawServiceTest {
                             e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.USER_NOT_FOUND));
         }
 
-        verifyNoInteractions(passwordEncoder, paperAccountService, tokenRedisRepository);
+        verifyNoInteractions(passwordEncoder, tokenRedisRepository);
     }
 
     @Test
@@ -143,7 +149,7 @@ class UserWithdrawServiceTest {
     void redisIsClearedOnlyAfterCommit() {
         User user = user();
         AuthUser authUser = authUser(user.getId());
-        given(userRepository.findById(user.getId())).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(user.getId())).willReturn(Optional.of(user));
         given(passwordEncoder.matches(PASSWORD, "hashed")).willReturn(true);
         TransactionSynchronizationManager.initSynchronization();
 
@@ -156,14 +162,16 @@ class UserWithdrawServiceTest {
         verify(tokenRedisRepository).deleteAllRefreshTokens(user.getId());
         ArgumentCaptor<Duration> ttl = ArgumentCaptor.forClass(Duration.class);
         verify(tokenRedisRepository).addToBlacklist(eq(authUser.accessTokenJti()), ttl.capture());
-        assertThat(ttl.getValue()).isPositive().isLessThanOrEqualTo(Duration.ofMinutes(30));
+        assertThat(ttl.getValue()).isPositive().isLessThanOrEqualTo(ACCESS_TTL);
+        // 다른 기기에 남은 access 토큰을 막는 탈퇴 표시: TTL은 access 최대 수명(설정값)
+        verify(tokenRedisRepository).markWithdrawn(user.getId(), ACCESS_TTL);
     }
 
     @Test
     @DisplayName("트랜잭션이 롤백되면 Redis는 건드리지 않는다")
     void rollbackLeavesRedisUntouched() {
         User user = user();
-        given(userRepository.findById(user.getId())).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(user.getId())).willReturn(Optional.of(user));
         given(passwordEncoder.matches(PASSWORD, "hashed")).willReturn(true);
         TransactionSynchronizationManager.initSynchronization();
 
@@ -178,7 +186,7 @@ class UserWithdrawServiceTest {
     @DisplayName("커밋 뒤 Redis 정리가 실패해도 탈퇴는 성공으로 끝난다 (DB는 이미 커밋됨, 오류는 로그로 남김)")
     void redisFailureAfterCommitDoesNotFailWithdrawal() {
         User user = user();
-        given(userRepository.findById(user.getId())).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(user.getId())).willReturn(Optional.of(user));
         given(passwordEncoder.matches(PASSWORD, "hashed")).willReturn(true);
         doThrow(new IllegalStateException("redis down")).when(tokenRedisRepository).deleteAllRefreshTokens(any());
         TransactionSynchronizationManager.initSynchronization();
@@ -194,7 +202,7 @@ class UserWithdrawServiceTest {
     @DisplayName("트랜잭션 동기화가 없는 상황이면 바로 정리한다")
     void runsImmediatelyWithoutTransactionSynchronization() {
         User user = user();
-        given(userRepository.findById(user.getId())).willReturn(Optional.of(user));
+        given(userRepository.findByIdForUpdate(user.getId())).willReturn(Optional.of(user));
         given(passwordEncoder.matches(PASSWORD, "hashed")).willReturn(true);
 
         service.withdraw(authUser(user.getId()), PASSWORD);
