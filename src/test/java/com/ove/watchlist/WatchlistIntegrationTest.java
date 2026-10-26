@@ -37,12 +37,16 @@ class WatchlistIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        var market = new com.ove.market.dto.MarketResponse();
-        org.springframework.test.util.ReflectionTestUtils.setField(market, "symbol", "KRW-BTC");
+        var market = new com.ove.market.client.UpbitMarketResponse();
+        org.springframework.test.util.ReflectionTestUtils.setField(market, "market", "KRW-BTC");
         org.springframework.test.util.ReflectionTestUtils.setField(market, "koreanName", "비트코인");
-        org.springframework.test.util.ReflectionTestUtils.setField(market, "price", new java.math.BigDecimal("98500000"));
-        given(marketService.getMarkets(null, null, null, 0, 100))
-            .willReturn(new com.ove.market.dto.MarketListResponse(List.of(market), 0, 100, 1));
+        var ticker = new com.ove.market.client.UpbitTickerResponse();
+        org.springframework.test.util.ReflectionTestUtils.setField(ticker, "market", "KRW-BTC");
+        org.springframework.test.util.ReflectionTestUtils.setField(ticker, "tradePrice", new java.math.BigDecimal("98500000"));
+        given(marketService.getSupportedMarkets()).willReturn(List.of(market));
+        given(marketService.getSupportedTickers()).willReturn(List.of(ticker));
+        given(marketService.getSupportedMarket("005930")).willThrow(
+            new com.ove.global.exception.BusinessException(com.ove.global.exception.ErrorCode.MARKET_NOT_FOUND));
         User user = users.saveAndFlush(User.builder().email("watch@ove.com").nickname("관심사용자").password("hashed").build());
         userId = user.getId();
         access = jwt.createAccessToken(userId).token();

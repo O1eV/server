@@ -18,24 +18,25 @@ import com.ove.market.service.MarketService;
 import com.ove.user.domain.User;
 import com.ove.user.repository.UserRepository;
 import com.ove.watchlist.repository.WatchlistRepository;
-import com.ove.watchlist.service.WatchlistService;
+import com.ove.watchlist.service.WatchlistWriteService;
 
 @ExtendWith(MockitoExtension.class)
 class WatchlistServiceTest {
     @Mock WatchlistRepository watchlist;
     @Mock UserRepository users;
     @Mock MarketService markets;
-    @InjectMocks WatchlistService service;
+    WatchlistWriteService service;
 
     @Test
     void 사용자_행을_잠근_뒤_20개_상한을_확인한다() {
         UUID userId = UUID.randomUUID();
-        given(users.findForWatchlistUpdate(userId)).willReturn(Optional.of(User.builder().build()));
+        service = new WatchlistWriteService(watchlist, users, 20);
+        given(users.findByIdForUpdate(userId)).willReturn(Optional.of(User.builder().build()));
         given(watchlist.countByUserId(userId)).willReturn(20L);
         assertThatThrownBy(() -> service.add(userId, "KRW-BTC"))
             .isInstanceOf(BusinessException.class).extracting("errorCode")
-            .isEqualTo(ErrorCode.WATCHLIST_LIMIT_EXCEEDED);
-        verify(users).findForWatchlistUpdate(userId);
+            .isEqualTo(ErrorCode.WATCHLIST_CONFLICT);
+        verify(users).findByIdForUpdate(userId);
         verify(watchlist, never()).saveAndFlush(any());
     }
 }

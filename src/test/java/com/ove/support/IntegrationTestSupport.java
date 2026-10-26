@@ -12,6 +12,7 @@ import org.testcontainers.containers.GenericContainer;
 import com.ove.account.repository.PaperAccountRepository;
 import com.ove.user.repository.TermsAgreementRepository;
 import com.ove.user.repository.UserRepository;
+import com.ove.watchlist.repository.WatchlistRepository;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -52,8 +53,12 @@ public abstract class IntegrationTestSupport {
     @Autowired
     protected PaperAccountRepository paperAccountRepository;
 
+    @Autowired
+    protected WatchlistRepository watchlistRepository;
+
     @AfterEach
     void cleanUp() {
+        watchlistRepository.deleteAllInBatch();
         paperAccountRepository.deleteAllInBatch();
         termsAgreementRepository.deleteAllInBatch();
         userRepository.deleteAllInBatch();

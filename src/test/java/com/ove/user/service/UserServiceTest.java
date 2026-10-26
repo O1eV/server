@@ -20,6 +20,7 @@ import com.ove.global.exception.ErrorCode;
 import com.ove.user.domain.User;
 import com.ove.user.dto.MyInfoResponse;
 import com.ove.user.repository.UserRepository;
+import com.ove.watchlist.repository.WatchlistRepository;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
@@ -28,7 +29,7 @@ class UserServiceTest {
     private UserRepository userRepository;
 
     @Mock
-    private com.ove.watchlist.repository.WatchlistRepository watchlistRepository;
+    private WatchlistRepository watchlistRepository;
 
     @InjectMocks
     private UserService userService;
@@ -56,6 +57,19 @@ class UserServiceTest {
     void 사용자가_없으면_USER_NOT_FOUND() {
         UUID userId = UUID.randomUUID();
         given(userRepository.findById(userId)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.getMyInfo(userId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.USER_NOT_FOUND);
+    }
+
+    @Test
+    void 탈퇴한_회원은_USER_NOT_FOUND() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder().email("user@ove.com").password("hashed").nickname("오브").build();
+        ReflectionTestUtils.setField(user, "id", userId);
+        user.withdraw(Instant.now());
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
 
         assertThatThrownBy(() -> userService.getMyInfo(userId))
                 .isInstanceOf(BusinessException.class)

@@ -25,13 +25,14 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/markets")
 @RequiredArgsConstructor
-public class MarketController {
+public class MarketController implements MarketControllerDocs {
 
     private static final String SUCCESS_MESSAGE = "요청에 성공했습니다.";
 
     private final MarketService marketService;
 
     // 종목 목록을 자산군·시장 상태·신호로 필터링해 조회할 때 사용 (signal 필터는 로그인 필요)
+    @Override
     @GetMapping
     public ResponseEntity<ApiResponse<MarketListResponse>> getMarkets(
             @AuthenticationPrincipal AuthUser authUser,
@@ -48,6 +49,7 @@ public class MarketController {
     }
 
     // 종목을 한글 이름·영어 이름·심볼로 검색할 때 사용
+    @Override
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<MarketSearchListResponse>> searchMarkets(
             @RequestParam(required = false) String q,
@@ -57,6 +59,7 @@ public class MarketController {
     }
 
     // 종목의 차트용 캔들을 조회할 때 사용
+    @Override
     @GetMapping("/{symbol}/candles")
     public ResponseEntity<ApiResponse<CandleListResponse>> getCandles(
             @PathVariable String symbol,

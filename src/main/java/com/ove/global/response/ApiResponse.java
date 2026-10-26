@@ -8,6 +8,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.ove.global.exception.ErrorCode;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -15,15 +16,22 @@ import lombok.Getter;
  * 모든 API가 공통으로 쓰는 응답 envelope.
  * 성공이면 error가 null, 실패면 data가 null이고 error에 UPPER_SNAKE_CASE 코드가 들어간다.
  */
+@Schema(description = "모든 API가 공통으로 쓰는 응답 envelope")
 @Getter
 @Builder
 public class ApiResponse<T> {
 
+    @Schema(description = "HTTP 상태 코드와 같은 값", example = "200")
     private final int statusCode;
+    @Schema(description = "응답을 만든 시각(UTC, ISO-8601)", example = "2026-10-24T03:21:45.123Z")
     private final Instant timestamp;
+    @Schema(description = "요청 경로", example = "/api/auth/login")
     private final String path;
+    @Schema(description = "결과 메시지(한국어)", example = "요청에 성공했습니다.")
     private final String message;
+    @Schema(description = "성공하면 응답 본문, 실패하면 null")
     private final T data;
+    @Schema(description = "실패하면 UPPER_SNAKE_CASE 에러 코드, 성공하면 null")
     private final String error;
 
     public static <T> ApiResponse<T> success(HttpStatus status, String message, T data) {

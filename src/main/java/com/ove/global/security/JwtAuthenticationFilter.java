@@ -51,13 +51,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private void authenticate(HttpServletRequest request, String token) {
         try {
             Claims claims = jwtProvider.parse(token);
+            UUID userId = UUID.fromString(claims.getSubject());
             if (jwtProvider.getTokenType(claims) != TokenType.ACCESS
-                    || tokenRedisRepository.isBlacklisted(claims.getId())) {
+                    || tokenRedisRepository.isRevoked(claims.getId(), userId)) {
                 request.setAttribute(AUTH_ERROR_ATTRIBUTE, ErrorCode.UNAUTHORIZED);
                 return;
             }
 
-            AuthUser authUser = new AuthUser(UUID.fromString(claims.getSubject()), claims.getId(),
+            AuthUser authUser = new AuthUser(userId, claims.getId(),
                     claims.getExpiration().toInstant());
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                     authUser, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
