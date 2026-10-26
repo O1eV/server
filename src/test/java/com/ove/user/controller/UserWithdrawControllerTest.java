@@ -158,6 +158,33 @@ class UserWithdrawControllerTest extends IntegrationTestSupport {
     }
 
     @Test
+    @DisplayName("탈퇴하면 내 활성 API 키가 모두 폐기되고(행은 소프트로 남음) 다른 회원의 키는 그대로다")
+    void withdrawalRevokesApiKeys() throws Exception {
+        register("a@ove.com", "에이회원");
+        register("b@ove.com", "비회원");
+        UUID aId = userRepository.findByEmail("a@ove.com").orElseThrow().getId();
+        UUID bId = userRepository.findByEmail("b@ove.com").orElseThrow().getId();
+        Session a = login("a@ove.com");
+        Session b = login("b@ove.com");
+        for (String name : new String[] {"하나", "둘"}) {
+            createKey(a.accessToken(), name);
+        }
+        createKey(b.accessToken(), "비 키");
+        assertThat(apiKeyRepository.countByUserIdAndRevokedAtIsNull(aId)).isEqualTo(2);
+
+        // 비밀번호가 틀리면 폐기되지 않는다
+        withdraw(a.accessToken(), "wrong-password1").andExpect(status().isUnauthorized());
+        assertThat(apiKeyRepository.countByUserIdAndRevokedAtIsNull(aId)).isEqualTo(2);
+
+        withdraw(a.accessToken(), PASSWORD).andExpect(status().isOk());
+
+        assertThat(apiKeyRepository.countByUserIdAndRevokedAtIsNull(aId)).isZero();
+        assertThat(apiKeyRepository.findAll().stream().filter(k -> k.getUserId().equals(aId)))
+                .hasSize(2).allSatisfy(k -> assertThat(k.getRevokedAt()).isNotNull());
+        assertThat(apiKeyRepository.countByUserIdAndRevokedAtIsNull(bId)).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("탈퇴한 뒤 같은 이메일·닉네임으로 다시 가입하고 로그인할 수 있다")
     void canReRegisterWithSameEmailAndNickname() throws Exception {
         register("user@ove.com", "오브");
@@ -266,6 +293,12 @@ class UserWithdrawControllerTest extends IntegrationTestSupport {
     }
 
     // ---------- helpers ----------
+
+    private void createKey(String accessToken, String name) throws Exception {
+        mockMvc.perform(post("/api/keys").header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("name", name))))
+                .andExpect(status().isCreated());
+    }
 
     private ResultActions withdraw(String accessToken, String password) throws Exception {
         return mockMvc.perform(delete("/api/users/me")

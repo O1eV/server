@@ -37,19 +37,18 @@ public class MyInfoResponse {
         private final Instant createdAt;
     }
 
-    @Schema(name = "MyInfoStats", description = "회원 통계(해당 기능이 아직 없어 항상 0)")
+    @Schema(name = "MyInfoStats", description = "회원 통계")
     @Getter
     @Builder
     public static class Stats {
 
-        @Schema(description = "관심종목 수", example = "0")
+        @Schema(description = "관심종목 수", example = "3")
         private final long watchlistCount;
-        @Schema(description = "활성 API 키 수", example = "0")
+        @Schema(description = "활성(폐기하지 않은) API 키 수", example = "1")
         private final long activeApiKeyCount;
     }
 
-    // API 키 기능이 아직 없어 activeApiKeyCount는 0으로 고정한다.
-    public static MyInfoResponse from(User user, long watchlistCount) {
+    public static MyInfoResponse from(User user, long watchlistCount, long activeApiKeyCount) {
         return MyInfoResponse.builder()
                 .user(UserInfo.builder()
                         .userId(user.getId())
@@ -59,7 +58,7 @@ public class MyInfoResponse {
                         .build())
                 .stats(Stats.builder()
                         .watchlistCount(watchlistCount)
-                        .activeApiKeyCount(0)
+                        .activeApiKeyCount(activeApiKeyCount)
                         .build())
                 .build();
     }

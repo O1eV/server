@@ -31,6 +31,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionSynchronizationUtils;
 
+import com.ove.apikey.repository.ApiKeyRepository;
 import com.ove.auth.repository.TokenRedisRepository;
 import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
@@ -52,6 +53,8 @@ class UserWithdrawServiceTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private TokenRedisRepository tokenRedisRepository;
+    @Mock
+    private ApiKeyRepository apiKeyRepository;
 
     private UserWithdrawService service;
 
@@ -59,7 +62,7 @@ class UserWithdrawServiceTest {
     void setUp() {
         service = new UserWithdrawService(userRepository, passwordEncoder, tokenRedisRepository,
                 new JwtProperties("test-secret-key-for-ove-backend-must-be-at-least-32-bytes",
-                        ACCESS_TTL, Duration.ofDays(14)));
+                        ACCESS_TTL, Duration.ofDays(14)), apiKeyRepository);
     }
 
     @AfterEach
@@ -90,6 +93,8 @@ class UserWithdrawServiceTest {
         assertThat(user.getNickname()).isNotEqualTo("오브");
         // 비밀번호 해시도 BCrypt 형식이 아닌 값으로 덮어써서 어떤 입력과도 일치하지 않는다
         assertThat(user.getPassword()).isEqualTo("!withdrawn");
+        // 활성 API 키는 같은 트랜잭션에서 전부 폐기한다 (탈퇴 시각과 같은 값으로)
+        verify(apiKeyRepository).revokeAllByUserId(user.getId(), user.getDeletedAt());
     }
 
     @Test
@@ -122,7 +127,8 @@ class UserWithdrawServiceTest {
         assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
         assertThat(user.getEmail()).isEqualTo("user@ove.com");
         assertThat(user.getDeletedAt()).isNull();
-                TransactionSynchronizationUtils.triggerAfterCommit();
+        verifyNoInteractions(apiKeyRepository);
+        TransactionSynchronizationUtils.triggerAfterCommit();
         verifyNoInteractions(tokenRedisRepository);
     }
 
@@ -141,7 +147,7 @@ class UserWithdrawServiceTest {
                             e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.USER_NOT_FOUND));
         }
 
-        verifyNoInteractions(passwordEncoder, tokenRedisRepository);
+        verifyNoInteractions(passwordEncoder, tokenRedisRepository, apiKeyRepository);
     }
 
     @Test

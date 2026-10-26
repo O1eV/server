@@ -5,6 +5,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.ove.apikey.repository.ApiKeyRepository;
 import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
 import com.ove.user.dto.MyInfoResponse;
@@ -20,11 +21,13 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final WatchlistRepository watchlistRepository;
+    private final ApiKeyRepository apiKeyRepository;
 
     public MyInfoResponse getMyInfo(UUID userId) {
         return userRepository.findById(userId)
                 .filter(user -> user.getStatus() == com.ove.user.domain.UserStatus.ACTIVE)
-                .map(user -> MyInfoResponse.from(user, watchlistRepository.countByUserId(userId)))
+                .map(user -> MyInfoResponse.from(user, watchlistRepository.countByUserId(userId),
+                        apiKeyRepository.countByUserIdAndRevokedAtIsNull(userId)))
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 }

@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import com.ove.apikey.repository.ApiKeyRepository;
 import com.ove.auth.repository.TokenRedisRepository;
 import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
@@ -21,7 +22,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 회원탈퇴. 비밀번호를 확인한 뒤 회원을 soft delete(개인정보 익명화)한다.
+ * 회원탈퇴. 비밀번호를 확인한 뒤 회원을 soft delete(개인정보 익명화)하고 API 키를 모두 폐기한다.
  * 로그인 정보(Redis)는 DB 트랜잭션이 커밋된 뒤에 정리한다. DB가 롤백됐는데 토큰만 지워지면 안 되기 때문이다.
  *
  * 모의계좌는 지우지 않고 남긴다. 계좌에는 개인정보가 없고(잔액·통화뿐), 모의투자 주문·보유가 계좌를 외래키로 참조해서
@@ -39,6 +40,7 @@ public class UserWithdrawService {
     private final PasswordEncoder passwordEncoder;
     private final TokenRedisRepository tokenRedisRepository;
     private final JwtProperties jwtProperties;
+    private final ApiKeyRepository apiKeyRepository;
 
     @Transactional
     public void withdraw(AuthUser authUser, String password) {
@@ -54,9 +56,11 @@ public class UserWithdrawService {
             throw new BusinessException(ErrorCode.INVALID_CREDENTIALS, "비밀번호가 일치하지 않습니다.");
         }
 
-        user.withdraw(Instant.now());
-        // TODO(새 기능이 사용자 데이터를 가지게 되면 여기에 삭제 호출을 추가한다): 관심종목(#33이 머지되면
-        //  WatchlistRepository.deleteAllByUserId 호출), 사용자 API 키, 기기 토큰.
+        Instant now = Instant.now();
+        user.withdraw(now);
+        // 활성 API 키는 같은 트랜잭션에서 전부 폐기한다(탈퇴가 롤백되면 같이 되돌아간다). 키 행은 소프트 폐기라 남는다.
+        apiKeyRepository.revokeAllByUserId(user.getId(), now);
+        // TODO(새 기능이 사용자 데이터를 가지게 되면 여기에 삭제 호출을 추가한다): 관심종목(WatchlistRepository.deleteAllByUserId), 기기 토큰.
         //  모의계좌·주문·보유는 개인정보가 없어 지우지 않고 익명화된 회원에 연결된 채로 남긴다.
 
         afterCommit(() -> clearLoginState(authUser));

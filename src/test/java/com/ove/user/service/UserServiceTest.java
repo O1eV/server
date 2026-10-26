@@ -15,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.ove.apikey.repository.ApiKeyRepository;
 import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
 import com.ove.user.domain.User;
@@ -31,17 +32,22 @@ class UserServiceTest {
     @Mock
     private WatchlistRepository watchlistRepository;
 
+    @Mock
+    private ApiKeyRepository apiKeyRepository;
+
     @InjectMocks
     private UserService userService;
 
     @Test
-    void 내_정보_조회_성공시_통계는_0으로_내려간다() {
+    void 내_정보_조회_성공시_통계는_저장소의_개수로_내려간다() {
         UUID userId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-10-19T00:00:00Z");
         User user = User.builder().email("user@ove.com").password("hashed").nickname("오브").build();
         ReflectionTestUtils.setField(user, "id", userId);
         ReflectionTestUtils.setField(user, "createdAt", createdAt);
         given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(watchlistRepository.countByUserId(userId)).willReturn(2L);
+        given(apiKeyRepository.countByUserIdAndRevokedAtIsNull(userId)).willReturn(3L);
 
         MyInfoResponse response = userService.getMyInfo(userId);
 
@@ -49,8 +55,8 @@ class UserServiceTest {
         assertThat(response.getUser().getEmail()).isEqualTo("user@ove.com");
         assertThat(response.getUser().getNickname()).isEqualTo("오브");
         assertThat(response.getUser().getCreatedAt()).isEqualTo(createdAt);
-        assertThat(response.getStats().getWatchlistCount()).isZero();
-        assertThat(response.getStats().getActiveApiKeyCount()).isZero();
+        assertThat(response.getStats().getWatchlistCount()).isEqualTo(2);
+        assertThat(response.getStats().getActiveApiKeyCount()).isEqualTo(3);
     }
 
     @Test

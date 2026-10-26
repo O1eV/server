@@ -20,7 +20,7 @@ public interface UserControllerDocs {
 
     @Operation(summary = "내 정보 조회", description = """
             로그인한 회원의 기본 정보와 통계를 돌려줍니다. Bearer 토큰이 필요합니다.
-            - `stats`(관심종목 수, 활성 API 키 수)는 해당 기능이 아직 없어서 항상 0입니다.
+            - `stats.watchlistCount`는 내 관심 종목 수, `stats.activeApiKeyCount`는 폐기하지 않은 API 키 수입니다.
             """)
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "회원 기본 정보(user)와 통계(stats)")
     @ApiErrorCodes({ErrorCode.TOKEN_EXPIRED, ErrorCode.UNAUTHORIZED, ErrorCode.USER_NOT_FOUND})
