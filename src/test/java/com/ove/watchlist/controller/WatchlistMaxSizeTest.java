@@ -66,7 +66,8 @@ class WatchlistMaxSizeTest extends IntegrationTestSupport {
         mockMvc.perform(post("/api/watchlist").header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("symbol", "KRW-XRP"))))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("WATCHLIST_CONFLICT"));
+                .andExpect(jsonPath("$.error").value("WATCHLIST_CONFLICT"))
+                .andExpect(jsonPath("$.message").value("관심 종목은 최대 2개까지 등록할 수 있습니다."));
     }
 
     @Test

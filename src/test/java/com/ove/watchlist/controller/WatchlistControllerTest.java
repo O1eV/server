@@ -131,7 +131,7 @@ class WatchlistControllerTest extends IntegrationTestSupport {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.statusCode").value(409))
                 .andExpect(jsonPath("$.error").value("WATCHLIST_CONFLICT"))
-                .andExpect(jsonPath("$.message").value("이미 등록된 종목이거나 최대 개수를 초과했습니다."));
+                .andExpect(jsonPath("$.message").value("이미 관심 종목에 있습니다."));
 
         mockMvc.perform(post("/api/watchlist").header("Authorization", bearer(token))
                         .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("symbol", " "))))
@@ -227,6 +227,47 @@ class WatchlistControllerTest extends IntegrationTestSupport {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("WATCHLIST_NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value("관심 종목에 없는 종목입니다."));
+    }
+
+    @Test
+    @DisplayName("같은 종목을 동시에 지워도 500 없이 1건만 200, 나머지는 404")
+    void concurrentRemove() throws Exception {
+        User user = createUser("a@ove.com", "에이");
+        String token = tokenOf(user);
+        add(token, "KRW-BTC");
+        int threads = 8;
+
+        List<Integer> statuses = runConcurrently(threads, i -> {
+            try {
+                return mockMvc.perform(delete("/api/watchlist/KRW-BTC").header("Authorization", bearer(token)))
+                        .andReturn().getResponse().getStatus();
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+
+        assertThat(statuses.stream().filter(s -> s == 200).count()).isEqualTo(1);
+        assertThat(statuses.stream().filter(s -> s == 404).count()).isEqualTo(threads - 1);
+        assertThat(watchlistRepository.countByUserId(user.getId())).isZero();
+    }
+
+    @Test
+    @DisplayName("/users/me: stats.watchlistCount가 내 관심 종목 수이고 다른 사용자 것은 세지 않는다")
+    void myInfoWatchlistCount() throws Exception {
+        String tokenA = tokenOf(createUser("a@ove.com", "에이"));
+        String tokenB = tokenOf(createUser("b@ove.com", "비이"));
+        add(tokenA, "KRW-BTC");
+        add(tokenA, "KRW-ETH");
+        add(tokenB, "KRW-XRP");
+
+        mockMvc.perform(get("/api/users/me").header("Authorization", bearer(tokenA)))
+                .andExpect(jsonPath("$.data.stats.watchlistCount").value(2));
+        mockMvc.perform(get("/api/users/me").header("Authorization", bearer(tokenB)))
+                .andExpect(jsonPath("$.data.stats.watchlistCount").value(1));
+
+        mockMvc.perform(delete("/api/watchlist/KRW-BTC").header("Authorization", bearer(tokenA))).andExpect(status().isOk());
+        mockMvc.perform(get("/api/users/me").header("Authorization", bearer(tokenA)))
+                .andExpect(jsonPath("$.data.stats.watchlistCount").value(1));
     }
 
     @Test
