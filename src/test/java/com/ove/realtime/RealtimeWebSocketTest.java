@@ -1,7 +1,11 @@
 package com.ove.realtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.verify;
 
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
@@ -187,7 +191,50 @@ class RealtimeWebSocketTest {
         waitFor(otherAlerts, this::publishBtcSignal);
         drain(myAlerts, otherAlerts);
 
-        given(tokenRedisRepository.isBlacklisted(myToken.jti())).willReturn(true);
+        given(tokenRedisRepository.isRevoked(myToken.jti(), me.getId())).willReturn(true);
+        publishBtcSignal();
+
+        assertThat(otherAlerts.poll(3, TimeUnit.SECONDS)).isNotNull();
+        assertThat(myAlerts.poll(500, TimeUnit.MILLISECONDS)).isNull();
+
+        subscribe(mySession, "/topic/signals/KRW-BTC");
+        assertThat(myError.message()).isEqualTo("UNAUTHORIZED");
+    }
+
+    @Test
+    @DisplayName("탈퇴한 회원: 탈퇴 표시가 있는 토큰으로는 접속할 수 없다 (UNAUTHORIZED)")
+    void withdrawnUserCannotConnect() throws Exception {
+        User me = saveUser("me@ove.com", "나");
+        IssuedToken myToken = jwtProvider.createAccessToken(me.getId());
+        given(tokenRedisRepository.isRevoked(myToken.jti(), me.getId())).willReturn(true);
+
+        ErrorCatcher error = new ErrorCatcher();
+        connectAsync(myToken.token(), error);
+
+        assertThat(error.message()).isEqualTo("UNAUTHORIZED");
+        // 블랙리스트만이 아니라 회원 ID까지 함께 확인한다
+        verify(tokenRedisRepository, atLeastOnce()).isRevoked(myToken.jti(), me.getId());
+    }
+
+    @Test
+    @DisplayName("탈퇴: 접속 뒤 회원이 탈퇴하면 알림이 끊기고, 새로 구독하면 UNAUTHORIZED (다른 회원은 계속 받는다)")
+    void withdrawalStopsAlerts() throws Exception {
+        User me = saveUser("me@ove.com", "나");
+        User other = saveUser("other@ove.com", "남");
+        watch(me, "KRW-BTC");
+        watch(other, "KRW-BTC");
+
+        ErrorCatcher myError = new ErrorCatcher();
+        StompSession mySession = connect(tokenOf(me), myError);
+        BlockingQueue<Map<String, Object>> myAlerts = subscribe(mySession, "/user/queue/alerts");
+        BlockingQueue<Map<String, Object>> otherAlerts =
+                subscribe(connect(tokenOf(other), new ErrorCatcher()), "/user/queue/alerts");
+        waitFor(myAlerts, this::publishBtcSignal);
+        waitFor(otherAlerts, this::publishBtcSignal);
+        drain(myAlerts, otherAlerts);
+
+        // 탈퇴하면 Redis에 withdrawn:{userId}가 생기고 isRevoked가 true가 된다 (jti는 블랙리스트에 없다)
+        given(tokenRedisRepository.isRevoked(anyString(), eq(me.getId()))).willReturn(true);
         publishBtcSignal();
 
         assertThat(otherAlerts.poll(3, TimeUnit.SECONDS)).isNotNull();

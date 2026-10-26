@@ -2,6 +2,7 @@ package com.ove.realtime.config;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.messaging.Message;
@@ -32,18 +33,25 @@ public class StompTokenGuard implements ChannelInterceptor {
         sessions.remove(sessionId);
     }
 
-    // 토큰이 만료됐으면 TOKEN_EXPIRED, 로그아웃(블랙리스트)됐으면 UNAUTHORIZED, 괜찮으면 null을 돌려줄 때 사용
+    // 토큰이 만료됐으면 TOKEN_EXPIRED, 로그아웃(블랙리스트)됐거나 탈퇴한 회원이면 UNAUTHORIZED, 괜찮으면 null을 돌려줄 때 사용
+    // REST의 JwtAuthenticationFilter와 같은 isRevoked(jti, userId)로 확인해서 두 경로의 판단이 어긋나지 않게 한다.
     public String check(StompPrincipal principal) {
         if (!Instant.now().isBefore(principal.accessTokenExpiresAt())) {
             return "TOKEN_EXPIRED";
         }
-        if (tokenRedisRepository.isBlacklisted(principal.accessTokenJti())) {
+        UUID userId;
+        try {
+            userId = UUID.fromString(principal.userId());
+        } catch (IllegalArgumentException e) {
+            return "UNAUTHORIZED";
+        }
+        if (tokenRedisRepository.isRevoked(principal.accessTokenJti(), userId)) {
             return "UNAUTHORIZED";
         }
         return null;
     }
 
-    // 서버가 보내는 신호·알림을, 토큰이 만료·로그아웃된 세션에는 보내지 않을 때 사용 (clientOutboundChannel)
+    // 서버가 보내는 신호·알림을, 토큰이 만료·로그아웃·탈퇴된 세션에는 보내지 않을 때 사용 (clientOutboundChannel)
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         if (SimpMessageHeaderAccessor.getMessageType(message.getHeaders()) != SimpMessageType.MESSAGE
