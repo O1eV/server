@@ -1,10 +1,13 @@
 package com.ove.realtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
 
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
@@ -31,6 +34,8 @@ import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
 
 import com.ove.auth.repository.TokenRedisRepository;
+import com.ove.global.security.IssuedToken;
+import com.ove.global.security.JwtProperties;
 import com.ove.global.security.JwtProvider;
 import com.ove.market.client.UpbitClient;
 import com.ove.realtime.service.PriceRelay;
@@ -54,6 +59,9 @@ class RealtimeWebSocketTest {
 
     @Autowired
     private JwtProvider jwtProvider;
+
+    @Autowired
+    private JwtProperties jwtProperties;
 
     @Autowired
     private UserRepository userRepository;
@@ -89,9 +97,7 @@ class RealtimeWebSocketTest {
         StompSession session = connect(null, new ErrorCatcher());
         BlockingQueue<Map<String, Object>> prices = subscribe(session, "/topic/prices/KRW-BTC");
 
-        Map<String, Object> received = waitFor(prices, () -> priceRelay.onMessage(redisTick(
-                "{\"symbol\":\"KRW-BTC\",\"price\":98500000,\"tradeTimestamp\":\"2026-10-19T01:00:00Z\","
-                        + "\"updatedAt\":\"2026-10-19T01:00:00.100Z\"}"), null));
+        Map<String, Object> received = waitFor(prices, () -> priceRelay.onMessage(btcTick(), null));
 
         assertThat(received.get("symbol")).isEqualTo("KRW-BTC");
         assertThat(((Number) received.get("price")).longValue()).isEqualTo(98500000L);
@@ -123,7 +129,7 @@ class RealtimeWebSocketTest {
     void signalAndAlert() throws Exception {
         User me = saveUser("me@ove.com", "나");
         User other = saveUser("other@ove.com", "남");
-        watchlistRepository.save(Watchlist.builder().userId(me.getId()).symbol("KRW-BTC").build());
+        watch(me, "KRW-BTC");
 
         StompSession mySession = connect(tokenOf(me), new ErrorCatcher());
         BlockingQueue<Map<String, Object>> myAlerts = subscribe(mySession, "/user/queue/alerts");
@@ -145,6 +151,79 @@ class RealtimeWebSocketTest {
         assertThat(alert.get("to")).isEqualTo("BUY");
 
         assertThat(otherAlerts.poll(500, TimeUnit.MILLISECONDS)).isNull();
+    }
+
+    @Test
+    @DisplayName("SEND 막기: 클라이언트가 /topic으로 직접 보내면 FORBIDDEN이고, 다른 구독자에게 가지 않는다")
+    void sendBlocked() throws Exception {
+        StompSession listener = connect(null, new ErrorCatcher());
+        BlockingQueue<Map<String, Object>> prices = subscribe(listener, "/topic/prices/KRW-BTC");
+        waitFor(prices, () -> priceRelay.onMessage(btcTick(), null));
+        drain(prices);
+
+        ErrorCatcher senderError = new ErrorCatcher();
+        StompSession sender = connect(null, senderError);
+        sender.send("/topic/prices/KRW-BTC", Map.of("symbol", "KRW-BTC", "price", 1));
+
+        assertThat(senderError.message()).isEqualTo("FORBIDDEN");
+        assertThat(prices.poll(500, TimeUnit.MILLISECONDS)).isNull();
+    }
+
+    @Test
+    @DisplayName("로그아웃: 접속 뒤 토큰이 블랙리스트에 오르면 알림이 끊기고, 새로 구독하면 UNAUTHORIZED")
+    void logoutStopsAlerts() throws Exception {
+        User me = saveUser("me@ove.com", "나");
+        User other = saveUser("other@ove.com", "남");
+        watch(me, "KRW-BTC");
+        watch(other, "KRW-BTC");
+        IssuedToken myToken = jwtProvider.createAccessToken(me.getId());
+
+        ErrorCatcher myError = new ErrorCatcher();
+        StompSession mySession = connect(myToken.token(), myError);
+        BlockingQueue<Map<String, Object>> myAlerts = subscribe(mySession, "/user/queue/alerts");
+        BlockingQueue<Map<String, Object>> otherAlerts =
+                subscribe(connect(tokenOf(other), new ErrorCatcher()), "/user/queue/alerts");
+        waitFor(myAlerts, this::publishBtcSignal);
+        waitFor(otherAlerts, this::publishBtcSignal);
+        drain(myAlerts, otherAlerts);
+
+        given(tokenRedisRepository.isBlacklisted(myToken.jti())).willReturn(true);
+        publishBtcSignal();
+
+        assertThat(otherAlerts.poll(3, TimeUnit.SECONDS)).isNotNull();
+        assertThat(myAlerts.poll(500, TimeUnit.MILLISECONDS)).isNull();
+
+        subscribe(mySession, "/topic/signals/KRW-BTC");
+        assertThat(myError.message()).isEqualTo("UNAUTHORIZED");
+    }
+
+    @Test
+    @DisplayName("토큰 만료: 접속 뒤 access 토큰이 만료되면 알림이 끊긴다")
+    void expiredTokenStopsAlerts() throws Exception {
+        User me = saveUser("me@ove.com", "나");
+        User other = saveUser("other@ove.com", "남");
+        watch(me, "KRW-BTC");
+        watch(other, "KRW-BTC");
+        JwtProvider shortLived = new JwtProvider(new JwtProperties(jwtProperties.secret(),
+                Duration.ofSeconds(3), jwtProperties.refreshTokenExpiration()));
+        IssuedToken myToken = shortLived.createAccessToken(me.getId());
+
+        BlockingQueue<Map<String, Object>> myAlerts =
+                subscribe(connect(myToken.token(), new ErrorCatcher()), "/user/queue/alerts");
+        BlockingQueue<Map<String, Object>> otherAlerts =
+                subscribe(connect(tokenOf(other), new ErrorCatcher()), "/user/queue/alerts");
+        waitFor(myAlerts, this::publishBtcSignal);
+        waitFor(otherAlerts, this::publishBtcSignal);
+        drain(myAlerts, otherAlerts);
+
+        long untilExpired = Duration.between(Instant.now(), myToken.expiresAt()).toMillis() + 300;
+        if (untilExpired > 0) {
+            Thread.sleep(untilExpired);
+        }
+        publishBtcSignal();
+
+        assertThat(otherAlerts.poll(3, TimeUnit.SECONDS)).isNotNull();
+        assertThat(myAlerts.poll(500, TimeUnit.MILLISECONDS)).isNull();
     }
 
     // 서버에 STOMP로 접속하고 연결이 끝날 때까지 기다릴 때 사용
@@ -189,6 +268,31 @@ class RealtimeWebSocketTest {
             }
         }
         throw new AssertionError("메시지를 받지 못했습니다.");
+    }
+
+    // 이미 받은 메시지를 잠깐 기다렸다가 비울 때 사용 (늦게 도착하는 메시지까지)
+    @SafeVarargs
+    private void drain(BlockingQueue<Map<String, Object>>... queues) throws InterruptedException {
+        Thread.sleep(300);
+        for (BlockingQueue<Map<String, Object>> queue : queues) {
+            queue.clear();
+        }
+    }
+
+    // 비트코인 신호가 HOLD → BUY로 바뀌었다고 보낼 때 사용
+    private void publishBtcSignal() {
+        realtimePublisher.publishSignalChange("KRW-BTC", "HOLD", "BUY", new BigDecimal("0.71"), false);
+    }
+
+    // 사용자의 관심 종목에 종목을 넣을 때 사용
+    private void watch(User user, String symbol) {
+        watchlistRepository.save(Watchlist.builder().userId(user.getId()).symbol(symbol).build());
+    }
+
+    // 수집기가 Redis로 보내는 비트코인 현재가 메시지를 만들 때 사용
+    private DefaultMessage btcTick() {
+        return redisTick("{\"symbol\":\"KRW-BTC\",\"price\":98500000,\"tradeTimestamp\":\"2026-10-19T01:00:00Z\","
+                + "\"updatedAt\":\"2026-10-19T01:00:00.100Z\"}");
     }
 
     // 수집기가 Redis로 보내는 것과 같은 모양의 메시지를 만들 때 사용
