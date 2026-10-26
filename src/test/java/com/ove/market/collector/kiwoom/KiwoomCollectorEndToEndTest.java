@@ -151,8 +151,11 @@ class KiwoomCollectorEndToEndTest extends IntegrationTestSupport {
 
             // 현재가·tick
             assertThat(Await.until(() -> "78700".equals(
-                    recorder.template().opsForHash().get("price:005930", "price")))).isTrue();
-            assertThat(Await.until(() -> !recorder.messagesOn("prices:005930").isEmpty())).isTrue();
+                    recorder.template().opsForHash().get("demo:price:005930", "price")))).isTrue();
+            assertThat(Await.until(() -> !recorder.messagesOn("demo:prices:005930").isEmpty())).isTrue();
+            // 주식(시연용) 시세는 코인과 같은 이름의 키·채널로는 나가지 않는다
+            assertThat(recorder.template().hasKey("price:005930")).isFalse();
+            assertThat(recorder.messagesOn("prices:005930")).isEmpty();
 
             // 접속 직전 분(10:00 KST)은 키움 분봉 REST로 채워진다 (접속한 분이 끝난 뒤 유예가 지나면 실행)
             assertThat(Await.until(() -> candleAt(Instant.parse("2026-10-21T01:00:00Z")) != null,
@@ -173,8 +176,8 @@ class KiwoomCollectorEndToEndTest extends IntegrationTestSupport {
             assertThat((BigDecimal) live.get("close")).isEqualByComparingTo("78700");
             assertThat((BigDecimal) live.get("volume")).isEqualByComparingTo("22"); // 10 + 5 + 7, 시간외 999는 제외
 
-            assertThat(Await.until(() -> recorder.messagesOn("candles.closed:005930").size() == 1)).isTrue();
-            JsonNode closed = objectMapper.readTree(recorder.messagesOn("candles.closed:005930").get(0));
+            assertThat(Await.until(() -> recorder.messagesOn("demo:candles.closed:005930").size() == 1)).isTrue();
+            JsonNode closed = objectMapper.readTree(recorder.messagesOn("demo:candles.closed:005930").get(0));
             assertThat(closed.get("time").asString()).isEqualTo(LIVE_FROM.toString());
             assertThat(closed.get("symbol").asString()).isEqualTo("005930");
 

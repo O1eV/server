@@ -76,6 +76,32 @@ class KiwoomPropertiesTest {
     }
 
     @Test
+    @DisplayName("호스트가 정확히 loopback이 아니면 평문 주소를 거부한다 (localhost.example.com, userinfo 우회 등)")
+    void rejectsLoopbackLookalikes() {
+        for (String bad : new String[] {"http://localhost.example.com", "http://127.0.0.1.evil.com:8080",
+                "http://localhost@evil.com", "http://evil.com/localhost", "http://localhostevil.com", "http://"}) {
+            assertThatThrownBy(() -> props(List.of("005930"), KEY, SECRET, bad, "wss://a", false, null).validate())
+                    .as("rest=%s", bad).isInstanceOf(IllegalStateException.class);
+        }
+        for (String bad : new String[] {"ws://localhost.example.com:10000", "ws://127.0.0.1.evil.com", "ws://evil.com/localhost"}) {
+            assertThatThrownBy(() -> props(List.of("005930"), KEY, SECRET, "https://a", bad, false, null).validate())
+                    .as("ws=%s", bad).isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Test
+    @DisplayName("localhost·127.0.0.1·[::1]의 평문 주소는 허용하고, https/wss는 호스트와 상관없이 허용한다")
+    void acceptsLoopbackAndSecureUrls() {
+        assertThatCode(() -> props(List.of("005930"), KEY, SECRET, "http://localhost:8080", "ws://localhost:9090", false,
+                null).validate()).doesNotThrowAnyException();
+        assertThatCode(() -> props(List.of("005930"), KEY, SECRET, "http://[::1]:8080", "ws://[::1]:9090", false,
+                null).validate()).doesNotThrowAnyException();
+        assertThatCode(() -> props(List.of("005930"), KEY, SECRET, "https://mockapi.kiwoom.com",
+                "wss://mockapi.kiwoom.com:10000/api/dostk/websocket", false, null).validate())
+                .doesNotThrowAnyException();
+    }
+
+    @Test
     @DisplayName("분봉 보충을 켜려면 분봉 시각의 의미(START/END)를 먼저 정해야 한다")
     void backfillRequiresLabel() {
         assertThatThrownBy(() -> props(List.of("005930"), KEY, SECRET, "https://a", "wss://a", true, null).validate())

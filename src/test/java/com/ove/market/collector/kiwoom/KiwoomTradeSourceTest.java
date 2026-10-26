@@ -54,6 +54,8 @@ class KiwoomTradeSourceTest {
     private final Queue<Integer> loginCodes = new ConcurrentLinkedQueue<>();
     private final Queue<Integer> regCodes = new ConcurrentLinkedQueue<>();
     private final AtomicBoolean answerLogin = new AtomicBoolean(true);
+    // null이 아니면 LOGIN마다 이 코드로 계속 실패시킨다(loginCodes보다 우선)
+    private volatile Integer alwaysLoginCode;
     private final AtomicInteger issuedTokens = new AtomicInteger();
     private final Recorder recorder = new Recorder();
 
@@ -70,6 +72,7 @@ class KiwoomTradeSourceTest {
         rest = new FakeKiwoomRestServer();
         rest.handle("/oauth2/token", request -> Reply.ok(FakeKiwoomRestServer.tokenJson(
                 "TEST-TOKEN-" + issuedTokens.incrementAndGet(), "20261022160000")));
+        rest.handle("/oauth2/revoke", request -> Reply.ok("{\"return_code\":0,\"return_msg\":\"정상\"}"));
         ws = new FakeUpbitWebSocketServer();
         ws.onClientText(this::answer);
 
@@ -97,7 +100,7 @@ class KiwoomTradeSourceTest {
             switch (message.path("trnm").asString("")) {
                 case "LOGIN" -> {
                     if (answerLogin.get()) {
-                        Integer code = loginCodes.poll();
+                        Integer code = alwaysLoginCode != null ? alwaysLoginCode : loginCodes.poll();
                         push(connection, "{\"trnm\":\"LOGIN\",\"return_code\":" + (code == null ? 0 : code)
                                 + ",\"return_msg\":\"" + (code == null ? "" : "login failed") + "\"}");
                     }
@@ -234,6 +237,55 @@ class KiwoomTradeSourceTest {
 
         assertThat(Await.until(() -> recorder.connected.get() == 1)).isTrue();
         assertThat(ws.connectionCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("LOGIN이 계속 실패하면 재연결 대기 시간이 늘어나고, 성공(등록 완료)한 뒤에야 처음으로 돌아간다")
+    void loginFailuresBackOffExponentially() {
+        for (int i = 0; i < 5; i++) {
+            loginCodes.add(8010);
+        }
+        RecordingBackoff backoff = new RecordingBackoff();
+        startSource(backoff);
+
+        assertThat(Await.until(() -> recorder.connected.get() == 1)).isTrue();
+
+        // 20ms → 40 → 80 → 160 → 200(상한). LOGIN 응답을 받았다고 되돌리지 않는다.
+        assertThat(backoff.delays).containsExactly(20L, 40L, 80L, 160L, 200L);
+        assertThat(backoff.resets.get()).isEqualTo(1); // 등록까지 끝난 한 번뿐
+        // 토큰 오류마다 이전 토큰을 폐기하고 새로 받는다
+        assertThat(rest.requestsTo("/oauth2/token")).hasSize(6);
+        assertThat(rest.requestsTo("/oauth2/revoke")).hasSize(5);
+        assertThat(rest.requestsTo("/oauth2/revoke").get(0).body()).contains("TEST-TOKEN-1");
+    }
+
+    @Test
+    @DisplayName("종목 등록(REG)이 계속 실패해도 재연결 대기 시간이 늘어난다")
+    void registrationFailuresBackOffExponentially() {
+        for (int i = 0; i < 4; i++) {
+            regCodes.add(1);
+        }
+        RecordingBackoff backoff = new RecordingBackoff();
+        startSource(backoff);
+
+        assertThat(Await.until(() -> recorder.connected.get() == 1)).isTrue();
+
+        assertThat(backoff.delays).containsExactly(20L, 40L, 80L, 160L);
+        assertThat(backoff.resets.get()).isEqualTo(1);
+        assertThat(rest.requestsTo("/oauth2/token")).hasSize(1); // 토큰 문제가 아니라서 토큰은 그대로 쓴다
+    }
+
+    @Test
+    @DisplayName("LOGIN이 계속 실패하면 실제 백오프 설정(1초~)으로 1.5초 동안 연결·토큰 발급이 한 자릿수에 그친다")
+    void persistentLoginFailureDoesNotHammerServer() throws Exception {
+        alwaysLoginCode = 8010;
+        startSource(new ReconnectBackoff(Duration.ofSeconds(1), Duration.ofSeconds(30), Duration.ofMillis(250),
+                RandomGenerator.getDefault()));
+
+        Thread.sleep(1500);
+
+        assertThat(ws.connectionCount()).isBetween(1, 3);
+        assertThat(rest.requestsTo("/oauth2/token").size()).isLessThan(10);
     }
 
     // ---------- PING · 체결 ----------
@@ -513,14 +565,7 @@ class KiwoomTradeSourceTest {
     }
 
     private void startSource() {
-        KiwoomProperties properties = new KiwoomProperties(true, List.of("005930", "000660"), APP_KEY, APP_SECRET,
-                rest.url(), ws.url(), Duration.ofMinutes(10), Duration.ofSeconds(120), Duration.ofSeconds(15),
-                Duration.ZERO, Duration.ofSeconds(1), Duration.ofSeconds(2), false, null, "1");
-        CollectorProperties collectorProperties = new CollectorProperties(false, List.of("KRW-BTC"), "wss://unused",
-                Duration.ofMillis(1500), Duration.ofMillis(250), Duration.ofSeconds(1), Duration.ofMinutes(10),
-                Duration.ofMillis(20), Duration.ofMillis(200), Duration.ofMillis(10), Duration.ofSeconds(60),
-                Duration.ofSeconds(90), Duration.ofMillis(50), Duration.ofSeconds(5), 3);
-        ReconnectBackoff backoff = new ReconnectBackoff(Duration.ofMillis(20), Duration.ofMillis(200),
+        startSource(new ReconnectBackoff(Duration.ofMillis(20), Duration.ofMillis(200),
                 Duration.ofMillis(10), new RandomGenerator() {
                     @Override
                     public long nextLong() {
@@ -531,12 +576,56 @@ class KiwoomTradeSourceTest {
                     public double nextDouble() {
                         return 1.0;
                     }
-                });
+                }));
+    }
+
+    private void startSource(ReconnectBackoff backoff) {
+        KiwoomProperties properties = new KiwoomProperties(true, List.of("005930", "000660"), APP_KEY, APP_SECRET,
+                rest.url(), ws.url(), Duration.ofMinutes(10), Duration.ofSeconds(120), Duration.ofSeconds(15),
+                Duration.ZERO, Duration.ofSeconds(1), Duration.ofSeconds(2), false, null, "1");
+        CollectorProperties collectorProperties = new CollectorProperties(false, List.of("KRW-BTC"), "wss://unused",
+                Duration.ofMillis(1500), Duration.ofMillis(250), Duration.ofSeconds(1), Duration.ofMinutes(10),
+                Duration.ofMillis(20), Duration.ofMillis(200), Duration.ofMillis(10), Duration.ofSeconds(60),
+                Duration.ofSeconds(90), Duration.ofMillis(50), Duration.ofSeconds(5), 3);
         KiwoomRestClient restClient = new KiwoomRestClient(rest.url(), Duration.ofSeconds(1), Duration.ofSeconds(2),
                 Duration.ZERO, objectMapper);
         KiwoomTokenProvider tokenProvider = new KiwoomTokenProvider(restClient, properties, clock);
         source = new KiwoomTradeSource(properties, collectorProperties, tokenProvider, objectMapper, backoff, clock);
         source.start(recorder);
+    }
+
+    // 대기 시간과 reset 호출을 기록하는 백오프(무작위 없이 최대값으로 고정)
+    private static final class RecordingBackoff extends ReconnectBackoff {
+
+        final List<Long> delays = new CopyOnWriteArrayList<>();
+        final AtomicInteger resets = new AtomicInteger();
+
+        RecordingBackoff() {
+            super(Duration.ofMillis(20), Duration.ofMillis(200), Duration.ofMillis(10), new RandomGenerator() {
+                @Override
+                public long nextLong() {
+                    return 0;
+                }
+
+                @Override
+                public double nextDouble() {
+                    return 1.0;
+                }
+            });
+        }
+
+        @Override
+        public Duration nextDelay() {
+            Duration delay = super.nextDelay();
+            delays.add(delay.toMillis());
+            return delay;
+        }
+
+        @Override
+        public void reset() {
+            resets.incrementAndGet();
+            super.reset();
+        }
     }
 
     private static final class Recorder implements TradeSource.TradeListener {

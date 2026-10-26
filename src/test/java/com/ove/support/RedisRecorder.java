@@ -31,7 +31,8 @@ public class RedisRecorder implements AutoCloseable {
         listenerContainer.start();
         listenerContainer.addMessageListener((message, pattern) -> messages.add(
                 new String[] {new String(message.getChannel()), new String(message.getBody())}),
-                List.of(new PatternTopic("prices:*"), new PatternTopic("candles.closed:*")));
+                List.of(new PatternTopic("prices:*"), new PatternTopic("candles.closed:*"),
+                        new PatternTopic("demo:prices:*"), new PatternTopic("demo:candles.closed:*")));
     }
 
     public StringRedisTemplate template() {

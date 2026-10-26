@@ -50,8 +50,13 @@ public class KiwoomTokenProvider implements AutoCloseable {
         return token;
     }
 
-    /** 서버가 토큰을 거부했을 때(8005 등) 불러서 다음 token() 호출이 새로 발급받게 한다. */
+    /**
+     * 서버가 토큰을 거부했을 때(8005 등) 불러서 다음 token() 호출이 새로 발급받게 한다.
+     * 거부된 토큰이 서버에 살아 있을 수 있어서 폐기(au10002)를 한 번 시도한다(실패해도 무시).
+     * 재발급이 계속 반복되며 토큰이 쌓이는 것을 막으려는 것이고, 반복 속도는 재연결 백오프가 제한한다.
+     */
     public synchronized void invalidate() {
+        revokeQuietly();
         token = null;
         expiresAt = null;
     }
@@ -82,6 +87,12 @@ public class KiwoomTokenProvider implements AutoCloseable {
      */
     @Override
     public synchronized void close() {
+        revokeQuietly();
+        token = null;
+        expiresAt = null;
+    }
+
+    private void revokeQuietly() {
         if (token == null) {
             return;
         }
@@ -91,9 +102,6 @@ public class KiwoomTokenProvider implements AutoCloseable {
             log.info("키움 접근토큰 폐기");
         } catch (RuntimeException e) {
             log.warn("키움 접근토큰 폐기 실패(무시): {}", e.getMessage());
-        } finally {
-            token = null;
-            expiresAt = null;
         }
     }
 }

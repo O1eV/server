@@ -52,6 +52,32 @@ class KiwoomTokenProviderTest {
     }
 
     @Test
+    @DisplayName("서버가 토큰을 거부해 invalidate하면 이전 토큰을 폐기(au10002)하고 다음에 새로 발급받는다")
+    void invalidateRevokesOldTokenAndReissues() {
+        KiwoomTokenProvider provider = provider();
+        provider.token();
+
+        provider.invalidate();
+
+        assertThat(server.requestsTo("/oauth2/revoke")).hasSize(1);
+        assertThat(server.requestsTo("/oauth2/revoke").get(0).body()).contains("TEST-TOKEN-1");
+        assertThat(provider.token()).isEqualTo("TEST-TOKEN-2");
+    }
+
+    @Test
+    @DisplayName("발급받은 토큰이 없으면 invalidate는 아무것도 호출하지 않고, 폐기가 실패해도 invalidate는 성공한다")
+    void invalidateWithoutTokenOrWithRevokeFailure() {
+        KiwoomTokenProvider provider = provider();
+        provider.invalidate();
+        assertThat(server.requestsTo("/oauth2/revoke")).isEmpty();
+
+        provider.token();
+        server.handle("/oauth2/revoke", request -> Reply.ok("{\"return_code\":8005,\"return_msg\":\"invalid\"}"));
+        provider.invalidate();
+        assertThat(provider.token()).isEqualTo("TEST-TOKEN-2");
+    }
+
+    @Test
     @DisplayName("토큰 발급 요청 형식: POST /oauth2/token, api-id au10001, grant_type·appkey·secretkey 본문, Authorization 없음")
     void issueRequestFormat() throws Exception {
         String token = provider().token();

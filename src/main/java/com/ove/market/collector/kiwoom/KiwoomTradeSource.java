@@ -66,7 +66,6 @@ public class KiwoomTradeSource implements TradeSource {
     private volatile WebSocket webSocket;
     private volatile Stage stage = Stage.IDLE;
     private volatile Phase phase = Phase.UNKNOWN;
-    private volatile boolean receivedSinceConnect;
     private volatile Instant openedAt;
     private volatile Instant lastReceivedAt;
     private int registrationIndex;
@@ -124,7 +123,6 @@ public class KiwoomTradeSource implements TradeSource {
         long myGeneration = generation.incrementAndGet();
         stage = Stage.CONNECTING;
         phase = Phase.UNKNOWN;
-        receivedSinceConnect = false;
         registrationIndex = 0;
         synchronized (this) {
             lastSend = CompletableFuture.completedFuture(null);
@@ -228,7 +226,7 @@ public class KiwoomTradeSource implements TradeSource {
             KiwoomException failure = KiwoomException.of(code, node.path("return_msg").asString(""));
             log.warn("키움 WebSocket LOGIN 실패: {}", failure.getMessage());
             if (failure.isTokenProblem()) {
-                tokenProvider.invalidate(); // 다음 연결 때 새 토큰을 발급받는다
+                tokenProvider.invalidate(); // 이전 토큰을 폐기하고, 다음 연결 때 새 토큰을 발급받는다(그 전에 백오프로 대기)
             }
             onConnectionLost(myGeneration);
             return;
@@ -251,6 +249,9 @@ public class KiwoomTradeSource implements TradeSource {
             return;
         }
         stage = Stage.ACTIVE;
+        // LOGIN과 종목 등록이 모두 성공해야 연결이 정상이라고 보고 재연결 대기 시간을 처음으로 되돌린다.
+        // 첫 메시지(LOGIN 응답)에서 되돌리면 LOGIN·REG가 계속 실패해도 대기 시간이 안 늘어나 약 1초 간격으로 재연결한다.
+        backoff.reset();
         log.info("키움 실시간 등록 완료: symbols={}", symbols.size());
         listener.onConnected(clock.instant());
     }
@@ -390,11 +391,6 @@ public class KiwoomTradeSource implements TradeSource {
                 return;
             }
             lastReceivedAt = clock.instant();
-            // 첫 메시지(LOGIN 응답)를 받으면 연결이 정상이라고 보고 재연결 대기 시간을 처음으로 되돌린다.
-            if (!receivedSinceConnect) {
-                receivedSinceConnect = true;
-                backoff.reset();
-            }
             handleMessage(myGeneration, socket, message);
         }
     }

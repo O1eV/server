@@ -1,7 +1,9 @@
 package com.ove.market.collector.kiwoom;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -42,6 +44,7 @@ public record KiwoomProperties(
 
     private static final Pattern SYMBOL = Pattern.compile("[0-9A-Z]{6}");
     private static final int MAX_SYMBOLS = 200;
+    private static final Set<String> LOOPBACK_HOSTS = Set.of("localhost", "127.0.0.1", "[::1]");
 
     /** 비밀 값이 로그·예외 메시지에 새지 않도록 키와 시크릿은 가려서 보여 준다. */
     @Override
@@ -79,7 +82,7 @@ public record KiwoomProperties(
             }
         }
         // 키와 토큰이 오가므로 암호화된 연결(https, wss)만 허용한다. 로컬 가짜 서버 테스트용으로 loopback 주소만 예외다.
-        if (!isSecure(restBaseUrl, "https://") || !isSecure(webSocketUrl, "wss://")) {
+        if (!isSecure(restBaseUrl, "https") || !isSecure(webSocketUrl, "wss")) {
             throw new IllegalStateException("collector.kiwoom.rest-base-url은 https://, web-socket-url은 wss://로 시작해야 합니다.");
         }
         if (backfillEnabled && !("START".equalsIgnoreCase(minuteBarLabel) || "END".equalsIgnoreCase(minuteBarLabel))) {
@@ -88,10 +91,24 @@ public record KiwoomProperties(
         }
     }
 
-    private static boolean isSecure(String url, String securePrefix) {
-        return url.startsWith(securePrefix)
-                || url.startsWith("http://127.0.0.1") || url.startsWith("ws://127.0.0.1")
-                || url.startsWith("http://localhost") || url.startsWith("ws://localhost");
+    // 암호화된 주소(secureScheme)이거나, 호스트가 정확히 loopback인 평문 주소(http/ws)만 통과시킨다.
+    // 문자열 접두사로 비교하면 http://localhost.example.com 같은 주소가 통과해서 키와 토큰이 평문으로 나갈 수 있다.
+    private static boolean isSecure(String url, String secureScheme) {
+        URI uri;
+        try {
+            uri = URI.create(url);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+        String host = uri.getHost();
+        if (uri.getScheme() == null || host == null) {
+            return false;
+        }
+        if (secureScheme.equalsIgnoreCase(uri.getScheme())) {
+            return true;
+        }
+        String plainScheme = "https".equals(secureScheme) ? "http" : "ws";
+        return plainScheme.equalsIgnoreCase(uri.getScheme()) && LOOPBACK_HOSTS.contains(host.toLowerCase());
     }
 
     public boolean minuteBarLabelIsEnd() {

@@ -44,11 +44,17 @@ public class KiwoomRestClient {
         KiwoomTrAllowlist.requireRest(apiId, path);
         throttle();
 
+        // 본문에는 App Key·Secret·토큰이 들어 있다. RestClient에 객체(Map)를 넘기면 DEBUG 로그가 본문을 그대로 남기므로,
+        // 직접 직렬화한 바이트를 스트림으로 써서 그 로그 경로를 피한다. 스트림 본문은 길이를 모르면 chunked로 가므로
+        // Content-Length를 직접 지정한다.
+        byte[] json = objectMapper.writeValueAsBytes(body);
+
         RawResponse raw;
         try {
             raw = restClient.post().uri(path)
                     .contentType(MediaType.APPLICATION_JSON)
                     .headers(headers -> {
+                        headers.setContentLength(json.length);
                         headers.set("api-id", apiId);
                         if (bearerToken != null) {
                             headers.set("authorization", "Bearer " + bearerToken);
@@ -58,7 +64,7 @@ public class KiwoomRestClient {
                             headers.set("next-key", nextKey);
                         }
                     })
-                    .body(body)
+                    .body(out -> out.write(json))
                     .exchange((request, response) -> new RawResponse(response.getStatusCode().value(),
                             response.getHeaders().getFirst("cont-yn"), response.getHeaders().getFirst("next-key"),
                             response.bodyTo(String.class)));

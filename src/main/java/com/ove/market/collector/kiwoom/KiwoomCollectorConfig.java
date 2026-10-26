@@ -8,6 +8,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import com.ove.market.collector.CandleAggregator;
 import com.ove.market.collector.CandleRepository;
@@ -27,8 +30,24 @@ import tools.jackson.databind.ObjectMapper;
 @EnableConfigurationProperties(KiwoomProperties.class)
 public class KiwoomCollectorConfig {
 
+    // 키움 시세는 개인 키로 시연하는 용도라(약관상 제3자 제공 금지) 배포(prod) 환경에서는 켤 수 없다.
+    // 조용히 무시하면 켰다고 착각할 수 있어서, prod 프로필에서 켜져 있으면 기동을 막는다.
+    // 키움(주식 시연) 시세의 Redis 키·채널 접두사
+    public static final String DEMO_KEY_PREFIX = "demo:";
+
+    static final String FORBIDDEN_PROFILE = "prod";
+
+    static void requireNotProd(Environment environment) {
+        if (environment.acceptsProfiles(Profiles.of(FORBIDDEN_PROFILE))) {
+            throw new IllegalStateException("키움 시세 수집기(collector.kiwoom.enabled=true)는 " + FORBIDDEN_PROFILE
+                    + " 프로필에서 켤 수 없습니다. 개인 키로 하는 시연 전용이며 키움 약관상 시세를 제3자에게 제공할 수 없습니다.");
+        }
+    }
+
     @Bean
-    public KiwoomRestClient kiwoomRestClient(KiwoomProperties properties, ObjectMapper objectMapper) {
+    public KiwoomRestClient kiwoomRestClient(KiwoomProperties properties, ObjectMapper objectMapper,
+                                             Environment environment) {
+        requireNotProd(environment);
         // 켜져 있는데 설정이 잘못되면(키 없음, 종목 코드 오류 등) 여기서 바로 기동을 막는다
         properties.validate();
         return new KiwoomRestClient(properties.restBaseUrl(), properties.restConnectTimeout(),
@@ -64,9 +83,14 @@ public class KiwoomCollectorConfig {
     @Bean(initMethod = "start", destroyMethod = "stop")
     public MarketCollector kiwoomMarketCollector(KiwoomProperties properties, CollectorProperties collectorProperties,
                                                  KiwoomTradeSource tradeSource, CandleRepository candleRepository,
-                                                 MarketRedisPublisher redisPublisher,
+                                                 StringRedisTemplate redisTemplate, ObjectMapper objectMapper,
                                                  ObjectProvider<KiwoomChartBackfillSource> backfillSource,
                                                  Clock clock) {
+        // 주식(시연용) 시세는 키 이름 앞에 demo:를 붙여 코인 시세와 Redis 키·채널이 섞이지 않게 한다.
+        // 나중에 Redis 시세를 STOMP로 중계할 때 코인 키만 구독하면 주식 시세가 사용자에게 나가지 않는다.
+        // 업비트용 공용 MarketRedisPublisher 빈과 타입이 겹치지 않도록 빈으로 등록하지 않고 여기서 직접 만든다.
+        MarketRedisPublisher redisPublisher = new MarketRedisPublisher(redisTemplate, objectMapper,
+                collectorProperties.priceTtl(), collectorProperties.tickPublishInterval(), DEMO_KEY_PREFIX);
         return new MarketCollector("키움", properties.normalizedSymbols(), collectorProperties, tradeSource,
                 new CandleAggregator(collectorProperties.graceDelay()), candleRepository, redisPublisher,
                 backfillSource.getIfAvailable(), clock);
