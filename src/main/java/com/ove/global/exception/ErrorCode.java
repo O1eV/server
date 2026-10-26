@@ -41,6 +41,8 @@ public enum ErrorCode {
     // 500
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다."),
 
+    COLLECTOR_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "실시간 시세 수집이 중지되었거나 아직 시세를 받지 못했습니다."),
+
     // 502
     UPSTREAM_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "외부 시세 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
 

@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents (e.g. OpenAI Codex) when working
 
 ## Status
 
-This directory has no source code yet (as of 2026-10-19). There are no build, lint, or test commands to run. When code is added, update this file with the real commands (Spring Boot build/test, React dev server, FastAPI model server, single-test invocations).
+Spring Boot backend (Java 21, Gradle). Build: `./gradlew build`. Tests: `./gradlew test`. Watchlist integration tests (H2 and mocked Redis token storage, no Docker required): `./gradlew test --tests "com.ove.watchlist.*"`. Existing auth integration and collector tests require Docker.
 
 ## Project: OvE (AI 의사결정 기반 실시간 투자 보조 서비스)
 
