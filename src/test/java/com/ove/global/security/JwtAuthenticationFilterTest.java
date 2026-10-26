@@ -1,7 +1,10 @@
 package com.ove.global.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 
 import java.time.Duration;
@@ -75,9 +78,25 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void 탈퇴한_회원의_access_토큰이면_UNAUTHORIZED를_남기고_Redis는_한_번만_조회한다() throws Exception {
+        UUID userId = UUID.randomUUID();
+        IssuedToken token = jwtProvider.createAccessToken(userId);
+        given(tokenRedisRepository.isRevoked(token.jti(), userId)).willReturn(true);
+        MockHttpServletRequest request = requestWithBearer(token.token());
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        assertThat(request.getAttribute(JwtAuthenticationFilter.AUTH_ERROR_ATTRIBUTE))
+                .isEqualTo(ErrorCode.UNAUTHORIZED);
+        verify(tokenRedisRepository).isRevoked(token.jti(), userId);
+        org.mockito.Mockito.verifyNoMoreInteractions(tokenRedisRepository);
+    }
+
+    @Test
     void 블랙리스트_토큰이면_UNAUTHORIZED를_남긴다() throws Exception {
         IssuedToken token = jwtProvider.createAccessToken(UUID.randomUUID());
-        given(tokenRedisRepository.isBlacklisted(token.jti())).willReturn(true);
+        given(tokenRedisRepository.isRevoked(eq(token.jti()), any(UUID.class))).willReturn(true);
         MockHttpServletRequest request = requestWithBearer(token.token());
 
         filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());

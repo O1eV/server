@@ -107,6 +107,17 @@ class AuthControllerTest extends IntegrationTestSupport {
                 .andExpect(jsonPath("$.error").value("NICKNAME_ALREADY_EXISTS"));
     }
 
+    @Test
+    void 회원가입_탈퇴_익명화_값은_400_INVALID_REQUEST() throws Exception {
+        register(registerBody("withdrawn+x@deleted.invalid", "오브"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+        register(registerBody("user@ove.com", "탈퇴0123456789abcd"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+        assertThat(userRepository.count()).isZero();
+    }
+
     // ---------- login ----------
 
     @Test
@@ -361,6 +372,17 @@ class AuthControllerTest extends IntegrationTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Access-Control-Allow-Origin", ALLOWED_ORIGIN))
                 .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+    }
+
+    @Test
+    void 재발급_로컬_Swagger_UI_Origin은_기본으로_허용된다() throws Exception {
+        LoginSession session = registerAndLogin(false);
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .cookie(session.refreshCookie())
+                        .header("Origin", "http://localhost:8080"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:8080"));
     }
 
     @Test

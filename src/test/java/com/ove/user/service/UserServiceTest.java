@@ -62,4 +62,17 @@ class UserServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.USER_NOT_FOUND);
     }
+
+    @Test
+    void 탈퇴한_회원은_USER_NOT_FOUND() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder().email("user@ove.com").password("hashed").nickname("오브").build();
+        ReflectionTestUtils.setField(user, "id", userId);
+        user.withdraw(Instant.now());
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> userService.getMyInfo(userId))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.USER_NOT_FOUND);
+    }
 }
