@@ -23,6 +23,7 @@ import jakarta.servlet.http.HttpServletRequest;
 /**
  * AuthController의 Swagger 문서. 문서 어노테이션이 길어서 컨트롤러 본문(쿠키 처리 등)이 묻히지 않도록 따로 뒀다.
  * 요청 매핑(@PostMapping 등)과 검증(@Valid)은 컨트롤러에 있고, 여기는 문서 전용이다.
+ * 파라미터 제약(@Min 등)은 컨트롤러가 아니라 이 인터페이스에만 붙인다(HV000151 방지, ApiErrorCodes 설명 참고).
  */
 @Tag(name = "Auth")
 public interface AuthControllerDocs {

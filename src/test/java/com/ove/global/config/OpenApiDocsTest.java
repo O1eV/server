@@ -28,6 +28,14 @@ class OpenApiDocsTest extends IntegrationTestSupport {
     }
 
     @Test
+    void 종목_검색의_검색어는_필수로_표시된다() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/markets/search'].get.parameters[?(@.name=='q')].required").value(true))
+                .andExpect(jsonPath("$.paths['/api/markets/search'].get.parameters[?(@.name=='limit')].required").value(false));
+    }
+
+    @Test
     void 인증_요구사항이_엔드포인트별로_다르게_표시된다() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())

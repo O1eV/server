@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * UserController의 Swagger 문서(문서 전용 인터페이스).
+ * 파라미터 제약(@Min 등)은 컨트롤러가 아니라 이 인터페이스에만 붙인다(HV000151 방지, ApiErrorCodes 설명 참고).
  */
 @Tag(name = "Users")
 public interface UserControllerDocs {

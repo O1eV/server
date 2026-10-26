@@ -32,7 +32,9 @@ auth:
 
 cors:
   # 쿠키(credentials)를 보내는 프론트 origin. 쉼표로 여러 개를 줄 수 있다.
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  # 기본값의 8080은 로컬에서 Swagger UI(API와 같은 출처)로 재발급·로그아웃을 시험하기 위한 것이다.
+  # 브라우저가 POST에 Origin을 붙여 보내서, 허용 목록에 없으면 403이 난다. 배포 환경에서는 실제 프론트 주소만 환경변수로 준다.
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8080}
 
 paper-account:
   # 회원가입 시 만들어 주는 모의계좌 초기 잔고(KRW)
@@ -52,7 +54,9 @@ upbit:
 
 springdoc:
   # Swagger UI(/swagger-ui.html)와 OpenAPI 문서(/v3/api-docs) 노출 여부. 기본은 둘 다 켜짐(로컬 개발용).
-  # 외부에 공개되는 환경에서는 환경변수 SWAGGER_UI_ENABLED, API_DOCS_ENABLED를 false로 줘서 끌 수 있다(운영 값은 여기서 정하지 않는다).
+  # 주의: 배포(외부 공개) 환경에서는 환경변수 SWAGGER_UI_ENABLED=false, API_DOCS_ENABLED=false가 필수다.
+  #       기본값을 true로 둔 건 로컬 편의 때문이라, 환경변수를 빼먹으면 공개 서버에 Swagger UI와 /v3/api-docs가 그대로 열린다(SecurityConfig도 permitAll).
+  # 참고: HTTPS 프록시(ALB·nginx 등) 뒤에서는 문서의 servers 주소가 http로 잡힐 수 있어 server.forward-headers-strategy=framework 설정이 필요하다.
   swagger-ui:
     enabled: ${SWAGGER_UI_ENABLED:true}
   api-docs:

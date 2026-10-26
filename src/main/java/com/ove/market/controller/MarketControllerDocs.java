@@ -19,6 +19,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * MarketController의 Swagger 문서(문서 전용 인터페이스). 시세 조회는 로그인 없이 호출할 수 있다.
+ * 파라미터 제약(@Min 등)은 컨트롤러가 아니라 이 인터페이스에만 붙인다(HV000151 방지, ApiErrorCodes 설명 참고).
  */
 @Tag(name = "Markets")
 public interface MarketControllerDocs {
@@ -52,7 +53,7 @@ public interface MarketControllerDocs {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "검색어에 걸린 종목 목록(최대 limit개)")
     @ApiErrorCodes({ErrorCode.INVALID_REQUEST, ErrorCode.UPSTREAM_UNAVAILABLE})
     ResponseEntity<ApiResponse<MarketSearchListResponse>> searchMarkets(
-            @Parameter(description = "검색어(한글 이름, 영어 이름 또는 심볼)", example = "비트") String q,
+            @Parameter(description = "검색어(한글 이름, 영어 이름 또는 심볼)", example = "비트", required = true) String q,
             @Parameter(description = "최대 결과 수(1~50)", example = "10") int limit);
 
     @Operation(summary = "캔들 조회", description = """

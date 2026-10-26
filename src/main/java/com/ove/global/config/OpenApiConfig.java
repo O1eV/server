@@ -67,6 +67,11 @@ public class OpenApiConfig {
                         단 쿠키는 JS로 읽거나 직접 넣을 수 없고, Swagger UI와 API가 같은 출처(origin)일 때만 동작합니다.
                         `Secure` 쿠키라서 `http://localhost` 외의 http 주소에서는 저장되지 않을 수 있습니다.
                         `refresh`·`logout`은 `Origin` 헤더가 허용 목록에 없으면 `403 FORBIDDEN`입니다.
+                        브라우저는 POST에 `Origin`을 붙여 보내므로, Swagger UI에서 쓰려면 환경변수 `CORS_ALLOWED_ORIGINS`에
+                        API 주소(예: `http://localhost:8080`)가 들어 있어야 합니다(로컬 기본값에는 들어 있습니다).
+
+                        **배포 주의** — 이 문서(`/swagger-ui.html`, `/v3/api-docs`)는 기본으로 열려 있습니다.
+                        배포 환경에서는 `SWAGGER_UI_ENABLED=false`, `API_DOCS_ENABLED=false`로 반드시 꺼야 합니다.
                         """))
                 .tags(List.of(
                         new Tag().name("Auth").description("회원가입, 로그인, 토큰 재발급, 로그아웃"),
