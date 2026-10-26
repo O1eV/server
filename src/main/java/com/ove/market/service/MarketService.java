@@ -142,6 +142,11 @@ public class MarketService {
         return result;
     }
 
+    // 업비트를 부르지 않고 MVP 지원 종목인지만 확인할 때 사용 (실시간 구독 검사에서 씀)
+    public boolean isSupported(String symbol) {
+        return SUPPORTED_SYMBOLS.contains(symbol);
+    }
+
     // 종목 코드(대소문자 무시)가 MVP 지원 종목이면 종목 정보를, 아니면 MARKET_NOT_FOUND를 던질 때 사용
     public UpbitMarketResponse getSupportedMarket(String symbol) {
         String normalized = symbol.trim().toUpperCase(Locale.ROOT);
