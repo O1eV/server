@@ -49,3 +49,7 @@ upbit:
   ticker-cache-ttl: 1500ms
   # 429(호출 한도 초과)를 받으면 이만큼 쉬었다가 한 번만 다시 시도한다.
   rate-limit-backoff: 300ms
+
+watchlist:
+  # 회원 한 명이 등록할 수 있는 관심 종목 최대 개수
+  max-size: 20
