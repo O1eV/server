@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final StompAuthInterceptor stompAuthInterceptor;
+    private final StompTokenGuard stompTokenGuard;
     private final CorsProperties corsProperties;
 
     // 프론트가 접속할 WebSocket 주소(/ws)를 열 때 사용 (허용 origin은 CORS 설정과 같게)
@@ -37,5 +38,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
         registration.interceptors(stompAuthInterceptor);
+    }
+
+    // 서버가 보내는 신호·알림을 토큰이 만료·로그아웃된 세션에는 안 보내게 할 때 사용
+    @Override
+    public void configureClientOutboundChannel(ChannelRegistration registration) {
+        registration.interceptors(stompTokenGuard);
     }
 }

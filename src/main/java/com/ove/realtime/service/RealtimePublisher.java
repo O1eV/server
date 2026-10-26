@@ -6,7 +6,6 @@ import java.util.UUID;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.ove.realtime.dto.AlertMessage;
 import com.ove.realtime.dto.PriceMessage;
@@ -17,7 +16,6 @@ import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class RealtimePublisher {
 
     private final SimpMessagingTemplate messagingTemplate;
