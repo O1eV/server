@@ -76,6 +76,7 @@ public class OpenApiConfig {
                 .tags(List.of(
                         new Tag().name("Auth").description("회원가입, 로그인, 토큰 재발급, 로그아웃"),
                         new Tag().name("Users").description("내 정보"),
+                        new Tag().name("ApiKeys").description("외부 연동용 API 키 발급·조회·폐기"),
                         new Tag().name("Markets").description("종목 목록·검색·캔들 조회 (현재는 업비트 코인 3종목)")))
                 .components(new Components()
                         .addSecuritySchemes(BEARER_SCHEME, new SecurityScheme()

@@ -10,6 +10,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.GenericContainer;
 
 import com.ove.account.repository.PaperAccountRepository;
+import com.ove.apikey.repository.ApiKeyRepository;
 import com.ove.user.repository.TermsAgreementRepository;
 import com.ove.user.repository.UserRepository;
 import com.ove.watchlist.repository.WatchlistRepository;
@@ -56,8 +57,12 @@ public abstract class IntegrationTestSupport {
     @Autowired
     protected WatchlistRepository watchlistRepository;
 
+    @Autowired
+    protected ApiKeyRepository apiKeyRepository;
+
     @AfterEach
     void cleanUp() {
+        apiKeyRepository.deleteAllInBatch();
         watchlistRepository.deleteAllInBatch();
         paperAccountRepository.deleteAllInBatch();
         termsAgreementRepository.deleteAllInBatch();

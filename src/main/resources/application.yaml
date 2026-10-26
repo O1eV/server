@@ -64,3 +64,7 @@ springdoc:
 watchlist:
   # 회원 한 명이 등록할 수 있는 관심 종목 최대 개수
   max-size: 20
+
+api-key:
+  # 회원 한 명이 가질 수 있는 활성(폐기하지 않은) API 키 최대 개수
+  max-active: 3
