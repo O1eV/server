@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 import org.springframework.stereotype.Service;
 
@@ -36,6 +37,10 @@ public class MarketService {
     private static final int MAX_SEARCH_LIMIT = 50;
 
     private final UpbitClient upbitClient;
+
+    public static void requireSupportedSymbol(String symbol) {
+        if (!SUPPORTED_SYMBOLS.contains(symbol)) throw new BusinessException(ErrorCode.MARKET_NOT_FOUND);
+    }
 
     // 자산군·시장 상태·신호 필터에 맞는 종목을 페이지 단위로 조회할 때 사용
     public MarketListResponse getMarkets(String assetClass, String marketState, String signal, int page, int size) {
@@ -141,8 +146,27 @@ public class MarketService {
         return result;
     }
 
+    // 종목 코드(대소문자 무시)가 MVP 지원 종목이면 종목 정보를, 아니면 MARKET_NOT_FOUND를 던질 때 사용
+    public UpbitMarketResponse getSupportedMarket(String symbol) {
+        String normalized = symbol.trim().toUpperCase(Locale.ROOT);
+        if (!SUPPORTED_SYMBOLS.contains(normalized)) {
+            throw new BusinessException(ErrorCode.MARKET_NOT_FOUND);
+        }
+        for (UpbitMarketResponse market : upbitClient.getMarkets()) {
+            if (market.getMarket().equals(normalized)) {
+                return market;
+            }
+        }
+        throw new BusinessException(ErrorCode.MARKET_NOT_FOUND);
+    }
+
+    // MVP 지원 종목 전체의 현재가를 받을 때 사용 (/markets와 같은 키라 업비트 현재가 캐시를 같이 쓴다)
+    public List<UpbitTickerResponse> getSupportedTickers() {
+        return upbitClient.getTickers(SUPPORTED_SYMBOLS);
+    }
+
     // 업비트 전체 종목 중 MVP에서 제공하는 종목만 뽑을 때 사용
-    private List<UpbitMarketResponse> getSupportedMarkets() {
+    public List<UpbitMarketResponse> getSupportedMarkets() {
         List<UpbitMarketResponse> supported = new ArrayList<>();
         for (UpbitMarketResponse market : upbitClient.getMarkets()) {
             if (SUPPORTED_SYMBOLS.contains(market.getMarket())) {

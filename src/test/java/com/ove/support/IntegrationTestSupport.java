@@ -12,8 +12,11 @@ import org.testcontainers.containers.GenericContainer;
 import com.ove.account.repository.PaperAccountRepository;
 import com.ove.paper.repository.PaperHoldingRepository;
 import com.ove.paper.repository.PaperOrderRepository;
+import com.ove.push.repository.PushDeviceRepository;
+import com.ove.signal.repository.SignalRepository;
 import com.ove.user.repository.TermsAgreementRepository;
 import com.ove.user.repository.UserRepository;
+import com.ove.watchlist.repository.WatchlistRepository;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -60,11 +63,23 @@ public abstract class IntegrationTestSupport {
     @Autowired
     protected PaperOrderRepository paperOrderRepository;
 
+    @Autowired
+    protected WatchlistRepository watchlistRepository;
+
+    @Autowired
+    protected PushDeviceRepository pushDeviceRepository;
+
+    @Autowired
+    protected SignalRepository signalRepository;
+
     @AfterEach
     void cleanUp() {
+        pushDeviceRepository.deleteAllInBatch();
+        watchlistRepository.deleteAllInBatch();
         paperOrderRepository.deleteAllInBatch();
         paperHoldingRepository.deleteAllInBatch();
         paperAccountRepository.deleteAllInBatch();
+        signalRepository.deleteAllInBatch();
         termsAgreementRepository.deleteAllInBatch();
         userRepository.deleteAllInBatch();
         redisTemplate.getConnectionFactory().getConnection().serverCommands().flushAll();
