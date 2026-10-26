@@ -66,6 +66,13 @@ public class AuthService {
 
         String email = normalizeEmail(request.getEmail());
         String nickname = request.getNickname().trim();
+        // 탈퇴 때 익명화에 쓰는 값은 가입에서 막는다. 남이 먼저 차지하면 그 회원의 탈퇴가 유일 제약 위반으로 실패한다.
+        if (email.endsWith(User.WITHDRAWN_EMAIL_DOMAIN)) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "사용할 수 없는 이메일입니다.");
+        }
+        if (nickname.startsWith(User.WITHDRAWN_NICKNAME_PREFIX)) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "'" + User.WITHDRAWN_NICKNAME_PREFIX + "'로 시작하는 닉네임은 사용할 수 없습니다.");
+        }
         if (userRepository.existsByEmail(email)) {
             throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }

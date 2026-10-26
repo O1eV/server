@@ -144,6 +144,24 @@ class AuthServiceTest {
         verify(userRepository, never()).save(any());
     }
 
+    @Test
+    void 회원가입_탈퇴_익명화_이메일_도메인이면_INVALID_REQUEST() {
+        assertThatThrownBy(() -> authService.register(registerRequest("withdrawn+x@deleted.invalid", "password123",
+                "password123", "오브")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_REQUEST);
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void 회원가입_탈퇴_익명화_닉네임_접두사이면_INVALID_REQUEST() {
+        assertThatThrownBy(() -> authService.register(registerRequest("user@ove.com", "password123",
+                "password123", "탈퇴한회원")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_REQUEST);
+        verify(userRepository, never()).save(any());
+    }
+
     // ---------- login ----------
 
     @Test

@@ -31,6 +31,10 @@ public class User {
 
     private static final String WITHDRAWN_PASSWORD = "!withdrawn";
 
+    // 탈퇴 시 익명화에 쓰는 값. 가입 때 이 형태를 막아야 남이 먼저 차지해 탈퇴를 방해할 수 없어서 상수로 공유한다.
+    public static final String WITHDRAWN_NICKNAME_PREFIX = "탈퇴";
+    public static final String WITHDRAWN_EMAIL_DOMAIN = "@deleted.invalid";
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -82,8 +86,8 @@ public class User {
     public void withdraw(Instant now) {
         this.status = UserStatus.WITHDRAWN;
         this.deletedAt = now;
-        this.email = "withdrawn+" + id + "@deleted.invalid";
-        this.nickname = "탈퇴" + id.toString().replace("-", "").substring(0, 16);
+        this.email = "withdrawn+" + id + WITHDRAWN_EMAIL_DOMAIN;
+        this.nickname = WITHDRAWN_NICKNAME_PREFIX + id.toString().replace("-", "").substring(0, 16);
         this.password = WITHDRAWN_PASSWORD;
     }
 }

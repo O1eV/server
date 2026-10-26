@@ -107,6 +107,17 @@ class AuthControllerTest extends IntegrationTestSupport {
                 .andExpect(jsonPath("$.error").value("NICKNAME_ALREADY_EXISTS"));
     }
 
+    @Test
+    void 회원가입_탈퇴_익명화_값은_400_INVALID_REQUEST() throws Exception {
+        register(registerBody("withdrawn+x@deleted.invalid", "오브"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+        register(registerBody("user@ove.com", "탈퇴0123456789abcd"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+        assertThat(userRepository.count()).isZero();
+    }
+
     // ---------- login ----------
 
     @Test
