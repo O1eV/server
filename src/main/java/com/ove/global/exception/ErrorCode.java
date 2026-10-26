@@ -29,6 +29,8 @@ public enum ErrorCode {
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
     MARKET_NOT_FOUND(HttpStatus.NOT_FOUND, "종목을 찾을 수 없습니다."),
 
+    WATCHLIST_NOT_FOUND(HttpStatus.NOT_FOUND, "관심 종목에 없는 종목입니다."),
+
     // 405
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "지원하지 않는 HTTP 메서드입니다."),
 
@@ -36,8 +38,14 @@ public enum ErrorCode {
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다."),
     NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 닉네임입니다."),
 
+    WATCHLIST_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 등록한 관심 종목입니다."),
+
+    WATCHLIST_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "관심 종목은 최대 20개까지 등록할 수 있습니다."),
+
     // 500
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다."),
+
+    COLLECTOR_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "실시간 시세 수집이 중지되었거나 아직 시세를 받지 못했습니다."),
 
     // 502
     UPSTREAM_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "외부 시세 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");

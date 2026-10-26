@@ -17,11 +17,12 @@ import lombok.RequiredArgsConstructor;
 @Transactional(readOnly = true)
 public class UserService {
 
+    private final com.ove.watchlist.repository.WatchlistRepository watchlistRepository;
     private final UserRepository userRepository;
 
     public MyInfoResponse getMyInfo(UUID userId) {
         return userRepository.findById(userId)
-                .map(MyInfoResponse::from)
+                .map(user -> MyInfoResponse.from(user, watchlistRepository.countByUserId(userId)))
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 }

@@ -27,6 +27,9 @@ class UserServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private com.ove.watchlist.repository.WatchlistRepository watchlistRepository;
+
     @InjectMocks
     private UserService userService;
 

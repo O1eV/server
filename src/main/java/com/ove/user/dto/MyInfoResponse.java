@@ -36,8 +36,8 @@ public class MyInfoResponse {
         private final long activeApiKeyCount;
     }
 
-    // 관심종목·API 키 기능이 아직 없어 통계는 0으로 고정한다.
-    public static MyInfoResponse from(User user) {
+    // API 키 통계는 키 기능 연동 전까지 0이다.
+    public static MyInfoResponse from(User user, long watchlistCount) {
         return MyInfoResponse.builder()
                 .user(UserInfo.builder()
                         .userId(user.getId())
@@ -46,7 +46,7 @@ public class MyInfoResponse {
                         .createdAt(user.getCreatedAt())
                         .build())
                 .stats(Stats.builder()
-                        .watchlistCount(0)
+                        .watchlistCount(watchlistCount)
                         .activeApiKeyCount(0)
                         .build())
                 .build();
