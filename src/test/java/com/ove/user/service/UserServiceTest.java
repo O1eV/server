@@ -20,12 +20,16 @@ import com.ove.global.exception.ErrorCode;
 import com.ove.user.domain.User;
 import com.ove.user.dto.MyInfoResponse;
 import com.ove.user.repository.UserRepository;
+import com.ove.watchlist.repository.WatchlistRepository;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private WatchlistRepository watchlistRepository;
 
     @InjectMocks
     private UserService userService;
@@ -47,6 +51,19 @@ class UserServiceTest {
         assertThat(response.getUser().getCreatedAt()).isEqualTo(createdAt);
         assertThat(response.getStats().getWatchlistCount()).isZero();
         assertThat(response.getStats().getActiveApiKeyCount()).isZero();
+    }
+
+    @Test
+    void 내_정보_조회시_관심종목_수를_내려준다() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder().email("user@ove.com").password("hashed").nickname("오브").build();
+        ReflectionTestUtils.setField(user, "id", userId);
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(watchlistRepository.countByUserId(userId)).willReturn(2L);
+
+        MyInfoResponse response = userService.getMyInfo(userId);
+
+        assertThat(response.getStats().getWatchlistCount()).isEqualTo(2);
     }
 
     @Test
