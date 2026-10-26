@@ -69,10 +69,12 @@ class PaperTradingServiceTest {
     @BeforeEach
     void setUp() {
         account = account("10000000");
+        PaperTradingReadService paperTradingReadService =
+                new PaperTradingReadService(paperAccountRepository, paperHoldingRepository);
         paperTradingWriteService = new PaperTradingWriteService(paperAccountRepository, paperHoldingRepository,
                 paperOrderRepository, new BigDecimal("10000000"));
-        paperTradingService = new PaperTradingService(paperAccountRepository, paperHoldingRepository,
-                paperOrderRepository, marketPriceProvider, paperTradingWriteService);
+        paperTradingService = new PaperTradingService(paperOrderRepository, marketPriceProvider,
+                paperTradingReadService, paperTradingWriteService);
     }
 
     @Test
@@ -164,7 +166,7 @@ class PaperTradingServiceTest {
         PaperHolding holding = holding("KRW-ETH", "3", "1000");
         given(paperAccountRepository.findByUserId(USER_ID)).willReturn(Optional.of(account));
         given(paperHoldingRepository.findAllByPaperAccountUserIdOrderBySymbolAsc(USER_ID)).willReturn(List.of(holding));
-        given(marketPriceProvider.getLatestPrices(List.of("KRW-ETH")))
+        given(marketPriceProvider.getPortfolioPrices(List.of("KRW-ETH")))
                 .willReturn(Map.of("KRW-ETH", new BigDecimal("1500")));
 
         PaperPortfolioResponse portfolio = paperTradingService.getPortfolio(USER_ID);
@@ -187,6 +189,32 @@ class PaperTradingServiceTest {
         assertThat(reset.getHoldings()).isEmpty();
         then(paperOrderRepository).should().deleteAllByUserId(USER_ID);
         then(paperHoldingRepository).should().deleteAllByUserId(USER_ID);
+    }
+
+    @Test
+    void 일부_종목_시세가_없어도_평균_매수가로_평가해_포트폴리오를_돌려준다() {
+        PaperHolding priced = holding("KRW-BTC", "1", "1000");
+        PaperHolding delisted = holding("KRW-OLD", "2", "500");
+        given(paperAccountRepository.findByUserId(USER_ID)).willReturn(Optional.of(account));
+        given(paperHoldingRepository.findAllByPaperAccountUserIdOrderBySymbolAsc(USER_ID))
+                .willReturn(List.of(priced, delisted));
+        given(marketPriceProvider.getPortfolioPrices(List.of("KRW-BTC", "KRW-OLD")))
+                .willReturn(Map.of("KRW-BTC", new BigDecimal("1200")));
+
+        PaperPortfolioResponse portfolio = paperTradingService.getPortfolio(USER_ID);
+
+        assertThat(portfolio.isPricesComplete()).isFalse();
+        assertThat(portfolio.getTotalPurchaseAmount()).isEqualByComparingTo("2000");
+        assertThat(portfolio.getTotalEvaluationAmount()).isEqualByComparingTo("2200");
+        assertThat(portfolio.getTotalProfitLoss()).isEqualByComparingTo("200");
+        assertThat(portfolio.getTotalAssetAmount()).isEqualByComparingTo("10002200");
+        assertThat(portfolio.getHoldings()).hasSize(2);
+        assertThat(portfolio.getHoldings().get(0).getCurrentPrice()).isEqualByComparingTo("1200");
+        assertThat(portfolio.getHoldings().get(0).isPriceAvailable()).isTrue();
+        assertThat(portfolio.getHoldings().get(1).getCurrentPrice()).isEqualByComparingTo("500");
+        assertThat(portfolio.getHoldings().get(1).isPriceAvailable()).isFalse();
+        assertThat(portfolio.getHoldings().get(1).getEvaluationAmount()).isEqualByComparingTo("1000");
+        assertThat(portfolio.getHoldings().get(1).getProfitLoss()).isEqualByComparingTo("0");
     }
 
     @Test

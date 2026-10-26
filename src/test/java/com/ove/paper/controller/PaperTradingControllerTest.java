@@ -49,7 +49,7 @@ class PaperTradingControllerTest extends IntegrationTestSupport {
     @BeforeEach
     void setUpMarketPrice() {
         given(marketPriceProvider.getLatestPrice(anyString())).willReturn(new BigDecimal("1000"));
-        given(marketPriceProvider.getLatestPrices(List.of("KRW-BTC")))
+        given(marketPriceProvider.getPortfolioPrices(List.of("KRW-BTC")))
                 .willReturn(Map.of("KRW-BTC", new BigDecimal("1000")));
     }
 
@@ -79,11 +79,13 @@ class PaperTradingControllerTest extends IntegrationTestSupport {
         assertThat(portfolio.get("totalProfitLoss").decimalValue()).isEqualByComparingTo("0");
         assertThat(portfolio.get("totalReturnRate").decimalValue()).isEqualByComparingTo("0.0000");
         assertThat(portfolio.get("totalAssetAmount").decimalValue()).isEqualByComparingTo("10000000");
+        assertThat(portfolio.get("pricesComplete").asBoolean()).isTrue();
         assertThat(portfolio.get("holdings").get(0).get("symbol").asString()).isEqualTo("KRW-BTC");
         assertThat(portfolio.get("holdings").get(0).get("quantity").decimalValue()).isEqualByComparingTo("1");
         assertThat(portfolio.get("holdings").get(0).get("averagePurchasePrice").decimalValue())
                 .isEqualByComparingTo("1000");
         assertThat(portfolio.get("holdings").get(0).get("currentPrice").decimalValue()).isEqualByComparingTo("1000");
+        assertThat(portfolio.get("holdings").get(0).get("priceAvailable").asBoolean()).isTrue();
         assertThat(portfolio.get("holdings").get(0).get("evaluationAmount").decimalValue())
                 .isEqualByComparingTo("1000");
         assertThat(portfolio.get("holdings").get(0).get("profitLoss").decimalValue()).isEqualByComparingTo("0");
@@ -102,6 +104,25 @@ class PaperTradingControllerTest extends IntegrationTestSupport {
                 .andExpect(jsonPath("$.data.pageInfo.size").value(1))
                 .andExpect(jsonPath("$.data.pageInfo.totalElements").value(2))
                 .andExpect(jsonPath("$.data.pageInfo.totalPages").value(2));
+    }
+
+    @Test
+    void 보유_종목_시세를_못_구해도_평균_매수가로_포트폴리오를_조회한다() throws Exception {
+        String accessToken = registerAndLogin();
+        order(accessToken, "KRW-BTC", "BUY", "1").andExpect(status().isCreated());
+        given(marketPriceProvider.getPortfolioPrices(List.of("KRW-BTC"))).willReturn(Map.of());
+
+        JsonNode portfolio = data(mockMvc.perform(get("/api/paper/portfolio")
+                        .header("Authorization", bearer(accessToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pricesComplete").value(false))
+                .andExpect(jsonPath("$.data.holdings[0].priceAvailable").value(false)));
+
+        assertThat(portfolio.get("holdings").get(0).get("currentPrice").decimalValue())
+                .isEqualByComparingTo("1000");
+        assertThat(portfolio.get("totalEvaluationAmount").decimalValue()).isEqualByComparingTo("1000");
+        assertThat(portfolio.get("totalProfitLoss").decimalValue()).isEqualByComparingTo("0");
+        assertThat(portfolio.get("totalAssetAmount").decimalValue()).isEqualByComparingTo("10000000");
     }
 
     @Test

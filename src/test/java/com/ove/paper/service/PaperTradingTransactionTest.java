@@ -116,7 +116,7 @@ class PaperTradingTransactionTest {
                 .quantity(BigDecimal.ONE)
                 .averagePurchasePrice(new BigDecimal("1000"))
                 .build());
-        given(marketPriceProvider.getLatestPrices(anyList())).willAnswer(invocation -> {
+        given(marketPriceProvider.getPortfolioPrices(anyList())).willAnswer(invocation -> {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             return java.util.Map.of("KRW-BTC", new BigDecimal("1200"));
         });

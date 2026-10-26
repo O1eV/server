@@ -6,6 +6,7 @@ import static org.mockito.BDDMockito.given;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -78,6 +79,36 @@ class UpbitMarketPriceProviderTest {
                     .isInstanceOfSatisfying(BusinessException.class,
                             e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MARKET_PRICE_UNAVAILABLE));
         }
+    }
+
+    @Test
+    @DisplayName("포트폴리오 시세는 상장폐지 종목을 건너뛰고 나머지 종목만 돌려준다")
+    void portfolioPricesSkipUnavailableSymbols() {
+        given(upbitClient.getMarkets()).willReturn(List.of(market("KRW-BTC"), market("KRW-ETH")));
+        given(upbitClient.getTickers(List.of("KRW-BTC", "KRW-ETH"))).willReturn(List.of(
+                ticker("KRW-BTC", "150000000.5"),
+                ticker("KRW-ETH", null)));
+
+        assertThat(provider.getPortfolioPrices(List.of("KRW-BTC", "KRW-ETH", "KRW-OLD")))
+                .containsExactly(Map.entry("KRW-BTC", new BigDecimal("150000000.5")));
+    }
+
+    @Test
+    @DisplayName("포트폴리오 시세 조회가 실패하면 예외 대신 빈 결과를 돌려준다")
+    void portfolioPricesReturnEmptyOnFailure() {
+        given(upbitClient.getMarkets()).willThrow(new BusinessException(ErrorCode.UPSTREAM_UNAVAILABLE));
+
+        assertThat(provider.getPortfolioPrices(List.of("KRW-BTC"))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("현재가 요청이 실패해도 포트폴리오 시세는 예외 대신 빈 결과를 돌려준다")
+    void portfolioPricesReturnEmptyWhenTickersFail() {
+        given(upbitClient.getMarkets()).willReturn(List.of(market("KRW-BTC")));
+        given(upbitClient.getTickers(List.of("KRW-BTC")))
+                .willThrow(new BusinessException(ErrorCode.UPSTREAM_UNAVAILABLE));
+
+        assertThat(provider.getPortfolioPrices(List.of("KRW-BTC"))).isEmpty();
     }
 
     @Test
