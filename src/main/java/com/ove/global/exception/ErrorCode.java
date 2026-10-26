@@ -28,6 +28,7 @@ public enum ErrorCode {
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
     MARKET_NOT_FOUND(HttpStatus.NOT_FOUND, "종목을 찾을 수 없습니다."),
+    WATCHLIST_NOT_FOUND(HttpStatus.NOT_FOUND, "관심 종목에 없는 종목입니다."),
 
     // 405
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "지원하지 않는 HTTP 메서드입니다."),
@@ -35,6 +36,7 @@ public enum ErrorCode {
     // 409
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 이메일입니다."),
     NICKNAME_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 닉네임입니다."),
+    WATCHLIST_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 관심 종목에 있습니다."),
 
     // 500
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다."),

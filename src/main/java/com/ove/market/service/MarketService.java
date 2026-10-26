@@ -141,6 +141,28 @@ public class MarketService {
         return result;
     }
 
+    // 제공하는 종목인지 확인할 때 사용
+    public boolean isSupported(String symbol) {
+        return SUPPORTED_SYMBOLS.contains(symbol);
+    }
+
+    // 지정한 종목들의 이름·현재가를 한 번에 가져올 때 사용
+    public List<MarketResponse> getMarketsBySymbols(List<String> symbols) {
+        if (symbols.isEmpty()) {
+            return List.of();
+        }
+        List<UpbitTickerResponse> tickers = upbitClient.getTickers(symbols);
+
+        List<MarketResponse> result = new ArrayList<>();
+        for (UpbitMarketResponse market : getSupportedMarkets()) {
+            UpbitTickerResponse ticker = findTicker(tickers, market.getMarket());
+            if (symbols.contains(market.getMarket()) && ticker != null) {
+                result.add(new MarketResponse(market, ticker));
+            }
+        }
+        return result;
+    }
+
     // 업비트 전체 종목 중 MVP에서 제공하는 종목만 뽑을 때 사용
     private List<UpbitMarketResponse> getSupportedMarkets() {
         List<UpbitMarketResponse> supported = new ArrayList<>();
