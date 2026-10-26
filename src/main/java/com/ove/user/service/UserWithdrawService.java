@@ -16,6 +16,7 @@ import com.ove.global.security.AuthUser;
 import com.ove.global.security.JwtProperties;
 import com.ove.user.domain.User;
 import com.ove.user.repository.UserRepository;
+import com.ove.watchlist.repository.WatchlistRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +40,7 @@ public class UserWithdrawService {
     private final PasswordEncoder passwordEncoder;
     private final TokenRedisRepository tokenRedisRepository;
     private final JwtProperties jwtProperties;
+    private final WatchlistRepository watchlistRepository;
 
     @Transactional
     public void withdraw(AuthUser authUser, String password) {
@@ -55,9 +57,9 @@ public class UserWithdrawService {
         }
 
         user.withdraw(Instant.now());
-        // TODO(새 기능이 사용자 데이터를 가지게 되면 여기에 삭제 호출을 추가한다): 관심종목(#33이 머지되면
-        //  WatchlistRepository.deleteAllByUserId 호출), 사용자 API 키, 기기 토큰.
-        //  모의계좌·주문·보유는 개인정보가 없어 지우지 않고 익명화된 회원에 연결된 채로 남긴다.
+        // 관심 종목은 개인정보이므로 탈퇴와 함께 지운다.
+        // 모의계좌·주문·보유는 개인정보가 없어 지우지 않고 익명화된 회원에 연결된 채로 남긴다.
+        watchlistRepository.deleteAllByUserId(authUser.userId());
 
         afterCommit(() -> clearLoginState(authUser));
     }
