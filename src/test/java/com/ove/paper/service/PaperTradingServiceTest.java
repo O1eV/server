@@ -3,9 +3,12 @@ package com.ove.paper.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.never;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -22,6 +25,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.ove.account.domain.PaperAccount;
@@ -58,13 +62,17 @@ class PaperTradingServiceTest {
 
     private PaperTradingService paperTradingService;
 
+    private PaperTradingWriteService paperTradingWriteService;
+
     private PaperAccount account;
 
     @BeforeEach
     void setUp() {
         account = account("10000000");
+        paperTradingWriteService = new PaperTradingWriteService(paperAccountRepository, paperHoldingRepository,
+                paperOrderRepository, new BigDecimal("10000000"));
         paperTradingService = new PaperTradingService(paperAccountRepository, paperHoldingRepository,
-                paperOrderRepository, marketPriceProvider, new BigDecimal("10000000"));
+                paperOrderRepository, marketPriceProvider, paperTradingWriteService);
     }
 
     @Test
@@ -199,6 +207,29 @@ class PaperTradingServiceTest {
         assertThat(response.getOrders()).hasSize(1);
         assertThat(response.getPageInfo().getPage()).isEqualTo(1);
         assertThat(response.getPageInfo().getTotalElements()).isEqualTo(11);
+
+        ArgumentCaptor<PageRequest> pageableCaptor = ArgumentCaptor.forClass(PageRequest.class);
+        then(paperOrderRepository).should().findAllByPaperAccountUserIdAndSymbol(eq(USER_ID), eq("KRW-BTC"),
+                pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getSort().toList())
+                .extracting(Sort.Order::getProperty)
+                .containsExactly("orderedAt", "id");
+    }
+
+    @Test
+    void 존재하지_않는_종목은_시세를_조회하기_전에_404로_거절한다() {
+        willThrow(new BusinessException(ErrorCode.MARKET_NOT_FOUND))
+                .given(marketPriceProvider).validateMarket("KRW-ZZZZ");
+
+        assertThatThrownBy(() -> paperTradingService.placeOrder(USER_ID,
+                order("KRW-ZZZZ", OrderSide.BUY, "1")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MARKET_NOT_FOUND));
+
+        then(marketPriceProvider).should(never()).getLatestPrice(anyString());
+        then(paperAccountRepository).shouldHaveNoInteractions();
+        then(paperHoldingRepository).shouldHaveNoInteractions();
+        then(paperOrderRepository).shouldHaveNoInteractions();
     }
 
     private PaperAccount account(String balance) {

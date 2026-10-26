@@ -9,6 +9,11 @@ import java.util.Map;
  */
 public interface MarketPriceProvider {
 
+    /**
+     * 거래소에 실제로 존재하는 종목인지 확인한다. 없으면 MARKET_NOT_FOUND를 던진다.
+     */
+    void validateMarket(String symbol);
+
     BigDecimal getLatestPrice(String symbol);
 
     /**

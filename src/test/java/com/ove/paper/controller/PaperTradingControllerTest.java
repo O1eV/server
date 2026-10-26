@@ -3,6 +3,7 @@ package com.ove.paper.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -148,6 +149,18 @@ class PaperTradingControllerTest extends IntegrationTestSupport {
                         .queryParam("page", "-1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void 거래소에_없는_종목은_404_MARKET_NOT_FOUND다() throws Exception {
+        String accessToken = registerAndLogin();
+        willThrow(new BusinessException(com.ove.global.exception.ErrorCode.MARKET_NOT_FOUND))
+                .given(marketPriceProvider).validateMarket("KRW-ZZZZ");
+
+        order(accessToken, "KRW-ZZZZ", "BUY", "1")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("MARKET_NOT_FOUND"));
+        assertThat(paperOrderRepository.count()).isZero();
     }
 
     @Test

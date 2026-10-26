@@ -17,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
 import com.ove.market.client.UpbitClient;
+import com.ove.market.client.UpbitMarketResponse;
 import com.ove.market.client.UpbitTickerResponse;
 
 /**
@@ -30,6 +31,18 @@ class UpbitMarketPriceProviderTest {
 
     @InjectMocks
     private UpbitMarketPriceProvider provider;
+
+    @Test
+    @DisplayName("거래소 종목 목록에 있으면 통과하고, 없으면 MARKET_NOT_FOUND(404)로 거절한다")
+    void validateMarket() {
+        given(upbitClient.getMarkets()).willReturn(List.of(market("KRW-BTC")));
+
+        provider.validateMarket("KRW-BTC");
+
+        assertThatThrownBy(() -> provider.validateMarket("KRW-ZZZZ"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MARKET_NOT_FOUND));
+    }
 
     @Test
     @DisplayName("업비트 현재가(trade_price)를 체결가로 돌려준다")
@@ -75,6 +88,10 @@ class UpbitMarketPriceProviderTest {
         assertThatThrownBy(() -> provider.getLatestPrice("KRW-BTC"))
                 .isInstanceOfSatisfying(BusinessException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+    }
+
+    private UpbitMarketResponse market(String symbol) {
+        return UpbitMarketResponse.builder().market(symbol).koreanName("테스트").englishName("Test").build();
     }
 
     private UpbitTickerResponse ticker(String market, String price) {
