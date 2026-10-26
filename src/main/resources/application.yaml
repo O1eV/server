@@ -64,3 +64,8 @@ springdoc:
 watchlist:
   # 회원 한 명이 등록할 수 있는 관심 종목 최대 개수
   max-size: 20
+
+push:
+  # 푸시 발송 어댑터. 아직 앱 푸시 제공자가 정해지지 않아 기본값은 로그만 남기는 logging이다.
+  # FCM/APNs 구현을 추가하면 PUSH_SENDER=fcm 등으로 바꿔 끼운다.
+  sender: ${PUSH_SENDER:logging}

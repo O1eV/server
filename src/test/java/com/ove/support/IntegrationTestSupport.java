@@ -10,6 +10,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.GenericContainer;
 
 import com.ove.account.repository.PaperAccountRepository;
+import com.ove.push.repository.PushDeviceRepository;
+import com.ove.signal.repository.SignalRepository;
 import com.ove.user.repository.TermsAgreementRepository;
 import com.ove.user.repository.UserRepository;
 import com.ove.watchlist.repository.WatchlistRepository;
@@ -56,9 +58,17 @@ public abstract class IntegrationTestSupport {
     @Autowired
     protected WatchlistRepository watchlistRepository;
 
+    @Autowired
+    protected PushDeviceRepository pushDeviceRepository;
+
+    @Autowired
+    protected SignalRepository signalRepository;
+
     @AfterEach
     void cleanUp() {
+        pushDeviceRepository.deleteAllInBatch();
         watchlistRepository.deleteAllInBatch();
+        signalRepository.deleteAllInBatch();
         paperAccountRepository.deleteAllInBatch();
         termsAgreementRepository.deleteAllInBatch();
         userRepository.deleteAllInBatch();

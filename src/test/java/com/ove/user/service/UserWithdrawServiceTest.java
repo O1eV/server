@@ -36,9 +36,11 @@ import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
 import com.ove.global.security.AuthUser;
 import com.ove.global.security.JwtProperties;
+import com.ove.push.repository.PushDeviceRepository;
 import com.ove.user.domain.User;
 import com.ove.user.domain.UserStatus;
 import com.ove.user.repository.UserRepository;
+import com.ove.watchlist.repository.WatchlistRepository;
 
 @ExtendWith(MockitoExtension.class)
 class UserWithdrawServiceTest {
@@ -52,6 +54,10 @@ class UserWithdrawServiceTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private TokenRedisRepository tokenRedisRepository;
+    @Mock
+    private WatchlistRepository watchlistRepository;
+    @Mock
+    private PushDeviceRepository pushDeviceRepository;
 
     private UserWithdrawService service;
 
@@ -59,7 +65,8 @@ class UserWithdrawServiceTest {
     void setUp() {
         service = new UserWithdrawService(userRepository, passwordEncoder, tokenRedisRepository,
                 new JwtProperties("test-secret-key-for-ove-backend-must-be-at-least-32-bytes",
-                        ACCESS_TTL, Duration.ofDays(14)));
+                        ACCESS_TTL, Duration.ofDays(14)),
+                watchlistRepository, pushDeviceRepository);
     }
 
     @AfterEach
@@ -90,6 +97,9 @@ class UserWithdrawServiceTest {
         assertThat(user.getNickname()).isNotEqualTo("오브");
         // 비밀번호 해시도 BCrypt 형식이 아닌 값으로 덮어써서 어떤 입력과도 일치하지 않는다
         assertThat(user.getPassword()).isEqualTo("!withdrawn");
+        // 관심 종목과 기기 푸시 토큰은 남기지 않는다
+        verify(watchlistRepository).deleteAllByUserId(user.getId());
+        verify(pushDeviceRepository).deleteAllByUserId(user.getId());
     }
 
     @Test
@@ -122,8 +132,8 @@ class UserWithdrawServiceTest {
         assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
         assertThat(user.getEmail()).isEqualTo("user@ove.com");
         assertThat(user.getDeletedAt()).isNull();
-                TransactionSynchronizationUtils.triggerAfterCommit();
-        verifyNoInteractions(tokenRedisRepository);
+        TransactionSynchronizationUtils.triggerAfterCommit();
+        verifyNoInteractions(tokenRedisRepository, watchlistRepository, pushDeviceRepository);
     }
 
     @Test
@@ -141,7 +151,7 @@ class UserWithdrawServiceTest {
                             e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.USER_NOT_FOUND));
         }
 
-        verifyNoInteractions(passwordEncoder, tokenRedisRepository);
+        verifyNoInteractions(passwordEncoder, tokenRedisRepository, watchlistRepository, pushDeviceRepository);
     }
 
     @Test

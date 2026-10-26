@@ -28,4 +28,8 @@ public interface WatchlistRepository extends JpaRepository<Watchlist, Long> {
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("delete from Watchlist w where w.userId = :userId")
     int deleteAllByUserId(@Param("userId") UUID userId);
+
+    // 이 종목을 관심 종목에 넣은 사용자 id들을 찾을 때 사용 (신호 변경 푸시 알림 대상)
+    @Query("select w.userId from Watchlist w where w.symbol = :symbol")
+    List<UUID> findUserIdsBySymbol(@Param("symbol") String symbol);
 }
