@@ -17,10 +17,11 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
-public class UserController {
+public class UserController implements UserControllerDocs {
 
     private final UserService userService;
 
+    @Override
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<MyInfoResponse>> getMyInfo(@AuthenticationPrincipal AuthUser authUser) {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "내 정보 조회에 성공했습니다.",

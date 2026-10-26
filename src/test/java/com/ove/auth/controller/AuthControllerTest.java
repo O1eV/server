@@ -364,6 +364,17 @@ class AuthControllerTest extends IntegrationTestSupport {
     }
 
     @Test
+    void 재발급_로컬_Swagger_UI_Origin은_기본으로_허용된다() throws Exception {
+        LoginSession session = registerAndLogin(false);
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .cookie(session.refreshCookie())
+                        .header("Origin", "http://localhost:8080"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:8080"));
+    }
+
+    @Test
     void 로그아웃_허용되지_않은_Origin이면_403이고_access도_블랙리스트에_안_올라간다() throws Exception {
         LoginSession session = registerAndLogin(false);
 
