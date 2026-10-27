@@ -38,10 +38,6 @@ public class MarketService {
 
     private final UpbitClient upbitClient;
 
-    public boolean isSupported(String symbol) {
-        return SUPPORTED_SYMBOLS.contains(symbol);
-    }
-
     public static void requireSupportedSymbol(String symbol) {
         if (!SUPPORTED_SYMBOLS.contains(symbol)) throw new BusinessException(ErrorCode.MARKET_NOT_FOUND);
     }

@@ -17,28 +17,26 @@ import com.ove.paper.dto.PaperOrderHistoryResponse;
 import com.ove.paper.dto.PaperOrderRequest;
 import com.ove.paper.dto.PaperOrderResponse;
 import com.ove.paper.dto.PaperPortfolioResponse;
-import com.ove.paper.dto.PaperResetResponse;
 import com.ove.paper.service.PaperTradingService;
 
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 
 @Validated
 @RestController
 @RequestMapping("/api/paper")
 @RequiredArgsConstructor
-public class PaperTradingController {
+public class PaperTradingController implements PaperTradingControllerDocs {
 
     private final PaperTradingService paperTradingService;
 
+    @Override
     @PostMapping("/reset")
-    public ResponseEntity<ApiResponse<PaperResetResponse>> reset(@AuthenticationPrincipal AuthUser authUser) {
-        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "모의 계좌가 초기화되었습니다.",
-                new PaperResetResponse(paperTradingService.reset(authUser.userId()).getCashBalance())));
+    public ResponseEntity<ApiResponse<PaperPortfolioResponse>> reset(@AuthenticationPrincipal AuthUser authUser) {
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "모의 계좌를 초기화했습니다.",
+                paperTradingService.reset(authUser.userId())));
     }
 
+    @Override
     @GetMapping("/portfolio")
     public ResponseEntity<ApiResponse<PaperPortfolioResponse>> getPortfolio(
             @AuthenticationPrincipal AuthUser authUser) {
@@ -46,9 +44,21 @@ public class PaperTradingController {
                 paperTradingService.getPortfolio(authUser.userId())));
     }
 
+    @Override
+    @GetMapping("/orders")
+    public ResponseEntity<ApiResponse<PaperOrderHistoryResponse>> getOrders(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestParam(required = false) String symbol,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, "모의 거래 내역 조회에 성공했습니다.",
+                paperTradingService.getOrders(authUser.userId(), symbol, page, size)));
+    }
+
+    @Override
     @PostMapping("/orders")
     public ResponseEntity<ApiResponse<PaperOrderResponse>> placeOrder(
-            @AuthenticationPrincipal AuthUser authUser, @Valid @RequestBody PaperOrderRequest request) {
+            @AuthenticationPrincipal AuthUser authUser, @RequestBody PaperOrderRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(HttpStatus.CREATED, "모의 주문이 체결되었습니다.",
                         paperTradingService.placeOrder(authUser.userId(), request)));

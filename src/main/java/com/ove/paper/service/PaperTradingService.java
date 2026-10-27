@@ -10,17 +10,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
-import com.ove.account.domain.PaperAccount;
-import com.ove.account.repository.PaperAccountRepository;
-import com.ove.global.exception.BusinessException;
-import com.ove.global.exception.ErrorCode;
 import com.ove.market.service.MarketPriceProvider;
-import com.ove.paper.domain.PaperHolding;
 import com.ove.paper.dto.PaperOrderHistoryResponse;
 import com.ove.paper.dto.PaperOrderRequest;
 import com.ove.paper.dto.PaperOrderResponse;
 import com.ove.paper.dto.PaperPortfolioResponse;
-import com.ove.paper.repository.PaperHoldingRepository;
 import com.ove.paper.repository.PaperOrderRepository;
 
 /**
@@ -30,33 +24,30 @@ import com.ove.paper.repository.PaperOrderRepository;
 @Service
 public class PaperTradingService {
 
-    private final PaperAccountRepository paperAccountRepository;
-    private final PaperHoldingRepository paperHoldingRepository;
     private final PaperOrderRepository paperOrderRepository;
     private final MarketPriceProvider marketPriceProvider;
+    private final PaperTradingReadService paperTradingReadService;
     private final PaperTradingWriteService paperTradingWriteService;
 
-    public PaperTradingService(PaperAccountRepository paperAccountRepository,
-                               PaperHoldingRepository paperHoldingRepository,
-                               PaperOrderRepository paperOrderRepository,
+    public PaperTradingService(PaperOrderRepository paperOrderRepository,
                                MarketPriceProvider marketPriceProvider,
+                               PaperTradingReadService paperTradingReadService,
                                PaperTradingWriteService paperTradingWriteService) {
-        this.paperAccountRepository = paperAccountRepository;
-        this.paperHoldingRepository = paperHoldingRepository;
         this.paperOrderRepository = paperOrderRepository;
         this.marketPriceProvider = marketPriceProvider;
+        this.paperTradingReadService = paperTradingReadService;
         this.paperTradingWriteService = paperTradingWriteService;
     }
 
     /**
-     * 보유 종목과 계좌는 짧은 읽기 트랜잭션으로 먼저 읽고, 시세는 트랜잭션 밖에서 조회한다.
+     * 계좌·보유 종목은 한 읽기 트랜잭션으로 같은 시점에 읽고, 시세는 트랜잭션 밖에서 조회한다.
+     * 상장폐지 등으로 일부 종목의 시세를 못 구해도 전체 조회를 실패시키지 않고 평균 매수가로 표시한다.
      */
     public PaperPortfolioResponse getPortfolio(UUID userId) {
-        PaperAccount account = getAccount(userId);
-        List<PaperHolding> holdings = paperHoldingRepository.findAllByPaperAccountUserIdOrderBySymbolAsc(userId);
-        List<String> symbols = holdings.stream().map(PaperHolding::getSymbol).toList();
-        Map<String, BigDecimal> currentPrices = marketPriceProvider.getLatestPrices(symbols);
-        return PaperPortfolioResponse.from(account, holdings, currentPrices);
+        PaperPortfolioSnapshot snapshot = paperTradingReadService.getPortfolioSnapshot(userId);
+        List<String> symbols = snapshot.holdings().stream().map(holding -> holding.getSymbol()).toList();
+        Map<String, BigDecimal> currentPrices = marketPriceProvider.getPortfolioPrices(symbols);
+        return PaperPortfolioResponse.from(snapshot.account(), snapshot.holdings(), currentPrices);
     }
 
     public PaperOrderHistoryResponse getOrders(UUID userId, String symbol, int page, int size) {
@@ -73,6 +64,10 @@ public class PaperTradingService {
     /**
      * 종목 존재 확인과 시세 조회를 트랜잭션 밖에서 끝낸 뒤, 체결만 짧은 트랜잭션으로 처리한다.
      * 체결가는 클라이언트 입력이 아니라 서버가 조회한 최신가만 사용한다.
+     *
+     * <p>거래소 종목 목록에 없는 종목(상장폐지·거래 중단)은 보유 중이어도 주문할 수 없다.
+     * 매도도 MARKET_NOT_FOUND(404)로 거절되며, 해당 보유 종목은 POST /api/paper/reset으로만 정리할 수 있다.
+     * 시세가 없는 종목을 평균 매수가로 청산하는 기능은 MVP 범위에서 제공하지 않는다.
      */
     public PaperOrderResponse placeOrder(UUID userId, PaperOrderRequest request) {
         String symbol = normalizeSymbol(request.getSymbol());
@@ -83,12 +78,6 @@ public class PaperTradingService {
 
     public PaperPortfolioResponse reset(UUID userId) {
         return paperTradingWriteService.reset(userId);
-    }
-
-    private PaperAccount getAccount(UUID userId) {
-        return paperAccountRepository.findByUserId(userId)
-                .filter(account -> !account.getUser().isWithdrawn())
-                .orElseThrow(() -> new BusinessException(ErrorCode.PAPER_ACCOUNT_NOT_FOUND));
     }
 
     private String normalizeSymbol(String symbol) {

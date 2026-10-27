@@ -32,10 +32,6 @@ public class PaperOrderRequest {
     @NotNull
     private OrderSide side;
 
-    @NotBlank
-    @Pattern(regexp = "MARKET", message = "시장가 주문만 지원합니다.")
-    private String orderType;
-
     @NotNull
     @DecimalMin(value = "0", inclusive = false)
     @Digits(integer = 12, fraction = 12)

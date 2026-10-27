@@ -56,27 +56,18 @@ public class PaperOrder {
     @Column(nullable = false, precision = 30, scale = 8)
     private BigDecimal amount;
 
-    // 과거 이력에 저장되지 않은 값은 null로 제공한다.
-    @Column(precision = 24, scale = 8)
-    private BigDecimal fee;
-
-    @Column(length = 4)
-    private String signalAtOrder;
-
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private Instant orderedAt;
 
     @Builder
     private PaperOrder(PaperAccount paperAccount, String symbol, OrderSide side, BigDecimal quantity,
-                       BigDecimal price, BigDecimal amount, BigDecimal fee, String signalAtOrder) {
+                       BigDecimal price, BigDecimal amount) {
         this.paperAccount = paperAccount;
         this.symbol = symbol;
         this.side = side;
         this.quantity = quantity;
         this.price = price;
         this.amount = amount;
-        this.fee = fee;
-        this.signalAtOrder = signalAtOrder;
     }
 }

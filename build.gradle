@@ -6,7 +6,7 @@ plugins {
 
 group = 'com.ove'
 version = '0.0.1-SNAPSHOT'
-description = 'O1eV'
+description = 'O1vE'
 
 java {
 	toolchain {

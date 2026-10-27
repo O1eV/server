@@ -323,6 +323,21 @@ class UpbitClientTest {
         assertThat(requestCount.get()).isEqualTo(2);
     }
 
+    @Test
+    @DisplayName("현재가 캐시 키가 상한을 넘으면 가장 오래 쓰지 않은 키부터 지운다")
+    void tickerCacheIsBounded() throws IOException {
+        startServer(200, "[]", 0);
+        UpbitClient client = client(Duration.ofSeconds(1), Duration.ZERO, Duration.ofMinutes(5), Duration.ZERO);
+
+        for (int index = 0; index < 201; index++) {
+            client.getTickers(List.of("KRW-T" + index));
+        }
+        // 201번째 키를 넣으면서 첫 키가 밀려났으므로, 첫 키를 다시 부르면 업비트를 또 호출한다.
+        client.getTickers(List.of("KRW-T0"));
+
+        assertThat(requestCount.get()).isEqualTo(202);
+    }
+
     private void assertUpstreamUnavailable(Runnable call) {
         assertThatThrownBy(call::run)
                 .isInstanceOf(BusinessException.class)

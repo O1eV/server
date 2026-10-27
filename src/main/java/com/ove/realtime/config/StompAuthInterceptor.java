@@ -35,7 +35,6 @@ public class StompAuthInterceptor implements ChannelInterceptor {
             StompCommand.UNSUBSCRIBE, StompCommand.DISCONNECT);
 
     private final JwtProvider jwtProvider;
-    private final MarketService marketService;
     private final StompTokenGuard tokenGuard;
 
     // 클라이언트가 보낸 프레임을 검사할 때 사용 (SEND 같은 허용 안 한 프레임은 막고, 접속 때 토큰·구독 때 주소를 확인)
@@ -123,7 +122,9 @@ public class StompAuthInterceptor implements ChannelInterceptor {
 
     // 제공하지 않는 종목이면 막을 때 사용
     private void checkSymbol(String symbol) {
-        if (!marketService.isSupported(symbol)) {
+        try {
+            MarketService.requireSupportedSymbol(symbol);
+        } catch (com.ove.global.exception.BusinessException error) {
             throw new MessagingException("MARKET_NOT_FOUND");
         }
     }

@@ -13,9 +13,6 @@ import lombok.Getter;
 @Builder
 public class PaperOrderResponse {
 
-    private final BigDecimal fee;
-    private final String signalAtOrder;
-    private final java.time.Instant executedAt;
     private final Long orderId;
     private final String symbol;
     private final OrderSide side;
@@ -26,7 +23,6 @@ public class PaperOrderResponse {
 
     public static PaperOrderResponse from(PaperOrder order) {
         return PaperOrderResponse.builder()
-                .fee(order.getFee()).signalAtOrder(order.getSignalAtOrder()).executedAt(order.getOrderedAt())
                 .orderId(order.getId())
                 .symbol(order.getSymbol())
                 .side(order.getSide())

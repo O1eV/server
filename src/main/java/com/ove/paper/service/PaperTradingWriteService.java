@@ -39,18 +39,15 @@ public class PaperTradingWriteService {
     private final PaperHoldingRepository paperHoldingRepository;
     private final PaperOrderRepository paperOrderRepository;
     private final BigDecimal initialBalance;
-    private final com.ove.signal.repository.SignalRepository signalRepository;
 
     public PaperTradingWriteService(PaperAccountRepository paperAccountRepository,
                                     PaperHoldingRepository paperHoldingRepository,
                                     PaperOrderRepository paperOrderRepository,
-                                    @Value("${paper-account.initial-balance:10000000}") BigDecimal initialBalance,
-                                    com.ove.signal.repository.SignalRepository signalRepository) {
+                                    @Value("${paper-account.initial-balance:10000000}") BigDecimal initialBalance) {
         this.paperAccountRepository = paperAccountRepository;
         this.paperHoldingRepository = paperHoldingRepository;
         this.paperOrderRepository = paperOrderRepository;
         this.initialBalance = initialBalance;
-        this.signalRepository = signalRepository;
     }
 
     /**
@@ -67,12 +64,11 @@ public class PaperTradingWriteService {
             throw new BusinessException(ErrorCode.ORDER_AMOUNT_TOO_SMALL);
         }
 
-        BigDecimal fee = amount.multiply(new BigDecimal("0.0005")).setScale(AMOUNT_SCALE, RoundingMode.HALF_UP);
         PaperAccount account = getAccountWithLock(userId);
         if (side == OrderSide.BUY) {
-            buy(account, symbol, normalizedQuantity, normalizedPrice, amount, fee);
+            buy(account, symbol, normalizedQuantity, normalizedPrice, amount);
         } else {
-            sell(account, symbol, normalizedQuantity, amount, fee);
+            sell(account, symbol, normalizedQuantity, amount);
         }
 
         PaperOrder order = paperOrderRepository.save(PaperOrder.builder()
@@ -82,9 +78,6 @@ public class PaperTradingWriteService {
                 .quantity(normalizedQuantity)
                 .price(normalizedPrice)
                 .amount(amount)
-                .fee(fee)
-                .signalAtOrder(signalRepository.findFirstBySymbolOrderByGeneratedAtDescIdDesc(symbol)
-                    .map(com.ove.signal.domain.Signal::getSignal).orElse(null))
                 .build());
         return PaperOrderResponse.from(order);
     }
@@ -98,8 +91,8 @@ public class PaperTradingWriteService {
         return PaperPortfolioResponse.from(account, List.of(), Map.of());
     }
 
-    private void buy(PaperAccount account, String symbol, BigDecimal quantity, BigDecimal price, BigDecimal amount, BigDecimal fee) {
-        if (account.getBalance().compareTo(amount.add(fee)) < 0) {
+    private void buy(PaperAccount account, String symbol, BigDecimal quantity, BigDecimal price, BigDecimal amount) {
+        if (account.getBalance().compareTo(amount) < 0) {
             throw new BusinessException(ErrorCode.INSUFFICIENT_BALANCE);
         }
 
@@ -115,10 +108,10 @@ public class PaperTradingWriteService {
                         .averagePurchasePrice(price)
                         .build());
         paperHoldingRepository.save(holding);
-        account.withdraw(amount.add(fee));
+        account.withdraw(amount);
     }
 
-    private void sell(PaperAccount account, String symbol, BigDecimal quantity, BigDecimal amount, BigDecimal fee) {
+    private void sell(PaperAccount account, String symbol, BigDecimal quantity, BigDecimal amount) {
         PaperHolding holding = paperHoldingRepository.findByPaperAccountIdAndSymbol(account.getId(), symbol)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INSUFFICIENT_HOLDING));
         if (holding.getQuantity().compareTo(quantity) < 0) {
@@ -129,12 +122,11 @@ public class PaperTradingWriteService {
         if (holding.getQuantity().signum() == 0) {
             paperHoldingRepository.delete(holding);
         }
-        account.deposit(amount.subtract(fee));
+        account.deposit(amount);
     }
 
     private PaperAccount getAccountWithLock(UUID userId) {
         return paperAccountRepository.findWithLockByUserId(userId)
-                .filter(account -> !account.getUser().isWithdrawn())
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAPER_ACCOUNT_NOT_FOUND));
     }
 }

@@ -1,6 +1,6 @@
 spring:
   application:
-    name: O1eV
+    name: O1vE
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/ove}
     username: ${DB_USERNAME:ove}
@@ -52,6 +52,30 @@ upbit:
   # 429(호출 한도 초과)를 받으면 이만큼 쉬었다가 한 번만 다시 시도한다.
   rate-limit-backoff: 300ms
 
+collector:
+  # 업비트 WebSocket 시세 수집기(체결 → 1분봉 → TimescaleDB·Redis). 운영 환경에서만 COLLECTOR_ENABLED=true로 켠다.
+  # 꺼져 있으면(기본) 업비트에 연결하지도, candles 테이블을 만들지도 않는다.
+  enabled: ${COLLECTOR_ENABLED:false}
+  # 수집할 종목. 쉼표로 여러 개를 줄 수 있다.
+  symbols: ${COLLECTOR_SYMBOLS:KRW-BTC,KRW-ETH,KRW-XRP}
+  # 분이 끝난 뒤 이 시간이 지나야 봉을 마감한다(늦게 도착하는 체결을 기다리는 시간)
+  grace-delay: 1500ms
+  kiwoom:
+    # 키움증권 REST API 주식 시세 수집기(장중 체결 → 1분봉 → TimescaleDB·Redis). 시세 조회 API만 쓴다.
+    # 개인 App Key 1개를 본인 로컬에서만 쓰는 전제다. 기본은 꺼짐(KIWOOM_ENABLED=true로 켠다).
+    enabled: ${KIWOOM_ENABLED:false}
+    # 수집할 종목 코드(6자리). 쉼표로 여러 개
+    symbols: ${KIWOOM_SYMBOLS:005930}
+    # 키와 시크릿은 환경변수로만 준다(이 파일에 값을 적지 않는다)
+    app-key: ${KIWOOM_APP_KEY:}
+    app-secret: ${KIWOOM_APP_SECRET:}
+    # 모의투자는 https://mockapi.kiwoom.com, wss://mockapi.kiwoom.com:10000/api/dostk/websocket (모의 키를 쓸 때만)
+    rest-base-url: ${KIWOOM_REST_BASE_URL:https://api.kiwoom.com}
+    web-socket-url: ${KIWOOM_WS_URL:wss://api.kiwoom.com:10000/api/dostk/websocket}
+    # 재접속 뒤 분봉 REST(ka10080) 보충. 분봉 시각(cntr_tm)이 봉의 시작인지 끝인지 먼저 확인한 뒤
+    # KIWOOM_MINUTE_BAR_LABEL=START 또는 END를 주고 KIWOOM_BACKFILL_ENABLED=true로 켠다.
+    backfill-enabled: ${KIWOOM_BACKFILL_ENABLED:false}
+    minute-bar-label: ${KIWOOM_MINUTE_BAR_LABEL:}
 springdoc:
   # Swagger UI(/swagger-ui.html)와 OpenAPI 문서(/v3/api-docs) 노출 여부. 기본은 둘 다 켜짐(로컬 개발용).
   # 주의: 배포(외부 공개) 환경에서는 환경변수 SWAGGER_UI_ENABLED=false, API_DOCS_ENABLED=false가 필수다.

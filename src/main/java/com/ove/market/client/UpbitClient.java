@@ -4,7 +4,8 @@ import java.net.http.HttpClient;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -30,6 +31,9 @@ import lombok.extern.slf4j.Slf4j;
 public class UpbitClient {
 
     private static final int TOO_MANY_REQUESTS = 429;
+    // 현재가 캐시 키는 사용자 입력(모의 주문 종목)과 사용자별 보유 종목 조합이라 계속 늘 수 있다.
+    // 오래된 항목을 지워 메모리가 무한히 커지지 않게 상한을 둔다.
+    private static final int MAX_TICKER_CACHE_ENTRIES = 200;
 
     private final RestClient restClient;
     private final Duration marketsCacheTtl;
@@ -41,9 +45,10 @@ public class UpbitClient {
     private long cachedMarketsAtNanos;
 
     // 현재가 캐시. 요청한 종목 묶음("KRW-BTC,KRW-ETH,...")별로 1~2초만 들고 있어서,
-    // 동시에 여러 요청이 와도 업비트에는 TTL마다 한 번만 간다. 종목 묶음은 서버가 정한 값만 들어온다.
+    // 동시에 여러 요청이 와도 업비트에는 TTL마다 한 번만 간다.
+    // 키에는 사용자 입력(모의 주문)과 사용자별 보유 종목 조합이 들어올 수 있어, 접근 순서 LRU로 상한을 둔다.
     private final Object tickersLock = new Object();
-    private final Map<String, CachedTickers> cachedTickers = new HashMap<>();
+    private final Map<String, CachedTickers> cachedTickers = new LinkedHashMap<>(16, 0.75f, true);
 
     // 설정값은 application.yaml의 upbit.* 로 바꿀 수 있고, 없으면 기본값을 쓴다.
     // 업비트가 느려져도 요청 스레드가 오래 묶이지 않도록 연결·읽기 타임아웃을 짧게 둔다.
@@ -86,15 +91,28 @@ public class UpbitClient {
 
         // 락을 잡은 채로 업비트를 부르므로, 캐시가 만료된 순간 몰려온 요청들은 첫 요청의 결과를 같이 쓴다.
         synchronized (tickersLock) {
+            long now = System.nanoTime();
             CachedTickers cached = cachedTickers.get(key);
-            if (cached != null && System.nanoTime() - cached.fetchedAtNanos() < tickerCacheTtl.toNanos()) {
+            if (cached != null && now - cached.fetchedAtNanos() < tickerCacheTtl.toNanos()) {
                 return cached.tickers();
             }
 
             // 호출이 실패하면 예외가 그대로 올라가므로 실패 결과는 캐시되지 않는다.
             List<UpbitTickerResponse> fresh = get("/v1/ticker?markets=" + key, UpbitTickerResponse[].class);
-            cachedTickers.put(key, new CachedTickers(fresh, System.nanoTime()));
+            cachedTickers.put(key, new CachedTickers(fresh, now));
+            evictOldTickerCache(now);
             return fresh;
+        }
+    }
+
+    // 만료된 키를 먼저 지우고, 그래도 상한을 넘으면 가장 오래 쓰지 않은 키부터 지운다.
+    private void evictOldTickerCache(long now) {
+        cachedTickers.entrySet().removeIf(entry ->
+                now - entry.getValue().fetchedAtNanos() >= tickerCacheTtl.toNanos());
+        while (cachedTickers.size() > MAX_TICKER_CACHE_ENTRIES) {
+            Iterator<Map.Entry<String, CachedTickers>> iterator = cachedTickers.entrySet().iterator();
+            iterator.next();
+            iterator.remove();
         }
     }
 

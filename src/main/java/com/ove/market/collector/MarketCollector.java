@@ -10,14 +10,12 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import com.ove.market.client.UpbitCandleResponse;
-import com.ove.market.client.UpbitClient;
-
 import lombok.extern.slf4j.Slf4j;
 
 /**
  * 시세 수집기. 체결을 받아 (1) 현재가와 tick을 Redis에 내보내고 (2) 1분봉으로 묶어 마감할 때
- * TimescaleDB에 저장하고 Redis로 알린다. 다시 연결될 때마다 최근 200분을 업비트 REST로 받아 빠진 봉을 채운다.
+ * TimescaleDB에 저장하고 Redis로 알린다. 다시 연결될 때마다 최근 200분을 REST로 받아 빠진 봉을 채운다.
+ * 체결 소스(업비트·키움)와 보충 소스는 밖에서 넣어 주므로 같은 클래스를 소스마다 한 개씩 만들어 쓴다.
  * 인스턴스 한 개만 실행한다고 가정한다(여러 대가 같은 봉을 동시에 쓰는 경우는 다루지 않는다).
  *
  * 메서드가 시각을 직접 받는 이유: 테스트에서 시간을 흘려 보내며 동작을 확인하기 위해서다.
@@ -27,14 +25,17 @@ public class MarketCollector implements TradeSource.TradeListener {
 
     // 재접속할 때마다 종목별로 최근 이만큼의 분을 다시 받아 빠진 봉을 채운다(업비트 분봉 REST는 한 번에 200개까지만 준다)
     private static final int BACKFILL_WINDOW_MINUTES = 200;
-    private static final String MINUTE_CANDLE_TYPE = "minutes/1";
 
+    // 로그에 찍을 소스 이름(업비트, 키움)
+    private final String sourceName;
+    private final List<String> symbols;
     private final CollectorProperties properties;
     private final TradeSource tradeSource;
     private final CandleAggregator aggregator;
     private final CandleRepository candleRepository;
     private final MarketRedisPublisher redisPublisher;
-    private final UpbitClient upbitClient;
+    // 재접속 때 빠진 봉을 채우는 소스. null이면 보충을 하지 않는다.
+    private final CandleBackfillSource backfillSource;
     private final Clock clock;
 
     // 이미 예약했거나 끝낸 보충의 실시간 시작 시각. 같은 분 안에 연결이 여러 번 붙어도 보충은 한 번만 한다.
@@ -47,15 +48,17 @@ public class MarketCollector implements TradeSource.TradeListener {
         return thread;
     });
 
-    public MarketCollector(CollectorProperties properties, TradeSource tradeSource, CandleAggregator aggregator,
-                           CandleRepository candleRepository, MarketRedisPublisher redisPublisher,
-                           UpbitClient upbitClient, Clock clock) {
+    public MarketCollector(String sourceName, List<String> symbols, CollectorProperties properties,
+                           TradeSource tradeSource, CandleAggregator aggregator, CandleRepository candleRepository,
+                           MarketRedisPublisher redisPublisher, CandleBackfillSource backfillSource, Clock clock) {
+        this.sourceName = sourceName;
+        this.symbols = List.copyOf(symbols);
         this.properties = properties;
         this.tradeSource = tradeSource;
         this.aggregator = aggregator;
         this.candleRepository = candleRepository;
         this.redisPublisher = redisPublisher;
-        this.upbitClient = upbitClient;
+        this.backfillSource = backfillSource;
         this.clock = clock;
     }
 
@@ -65,7 +68,7 @@ public class MarketCollector implements TradeSource.TradeListener {
         scheduler.scheduleWithFixedDelay(() -> tick(clock.instant()), intervalMillis, intervalMillis,
                 TimeUnit.MILLISECONDS);
         tradeSource.start(this);
-        log.info("시세 수집기 시작: symbols={}", properties.upperCaseSymbols());
+        log.info("{} 시세 수집기 시작: symbols={}", sourceName, symbols);
     }
 
     public void stop() {
@@ -81,14 +84,20 @@ public class MarketCollector implements TradeSource.TradeListener {
                 .plus(1, ChronoUnit.MINUTES);
         aggregator.startLive(liveFrom);
 
+        if (backfillSource == null) {
+            log.info("{} 연결됨: 실시간 집계는 {}분부터(누락 구간 보충 없음)", sourceName, liveFrom);
+            return;
+        }
+
         // 같은 분(같은 liveFrom)에는 보충 대상 구간이 같아서, 연결이 자주 끊겼다 붙어도 REST 호출이 늘지 않게 한 번만 한다.
         if (!claimBackfill(liveFrom)) {
-            log.info("업비트 연결됨: 실시간 집계는 {}분부터, 같은 분의 누락 구간 보충은 이미 처리 중이거나 끝나 건너뜀", liveFrom);
+            log.info("{} 연결됨: 실시간 집계는 {}분부터, 같은 분의 누락 구간 보충은 이미 처리 중이거나 끝나 건너뜀", sourceName, liveFrom);
             return;
         }
 
         Duration delay = Duration.between(clock.instant(), liveFrom.plus(properties.graceDelay()));
-        log.info("업비트 연결됨: 실시간 집계는 {}분부터, 누락 구간 보충은 {}ms 뒤", liveFrom, Math.max(0, delay.toMillis()));
+        log.info("{} 연결됨: 실시간 집계는 {}분부터, 누락 구간 보충은 {}ms 뒤", sourceName, liveFrom,
+                Math.max(0, delay.toMillis()));
         scheduleBackfill(liveFrom, 1, Math.max(0, delay.toMillis()));
     }
 
@@ -96,7 +105,7 @@ public class MarketCollector implements TradeSource.TradeListener {
     public void onDisconnected() {
         // 끊긴 동안 진행 중이던 봉이 일부 체결만 담은 채 저장되지 않도록 버린다. 그 구간은 재연결 뒤 REST로 채운다.
         aggregator.discardOpenCandles();
-        log.warn("업비트 연결이 끊김: 진행 중이던 봉을 버림");
+        log.warn("{} 연결이 끊김: 진행 중이던 봉을 버림", sourceName);
     }
 
     @Override
@@ -178,7 +187,7 @@ public class MarketCollector implements TradeSource.TradeListener {
     }
 
     /**
-     * 재접속할 때마다 종목별로 "실시간 집계 직전 분"까지 최근 200분을 업비트 REST 분봉으로 받아 빠진 봉을 채운다.
+     * 재접속할 때마다 종목별로 "실시간 집계 직전 분"까지 최근 200분을 REST 분봉으로 받아 빠진 봉을 채운다.
      * 호출은 종목당 1회다. 예전처럼 "DB의 마지막 봉 다음부터"만 보지 않기 때문에, 한 번 보충이 실패해서 구멍이 생겨도
      * 그 뒤에 실시간 봉이 저장됐더라도 다음 재접속에서 200분 안의 구멍은 다시 채워진다.
      *
@@ -190,20 +199,15 @@ public class MarketCollector implements TradeSource.TradeListener {
     void backfill(Instant liveFrom) {
         Instant target = liveFrom.minus(1, ChronoUnit.MINUTES);
         Instant windowStart = target.minus(BACKFILL_WINDOW_MINUTES - 1L, ChronoUnit.MINUTES);
-        for (String symbol : properties.upperCaseSymbols()) {
-            // 업비트의 to는 그 시각을 포함하지 않으므로 liveFrom을 넘기면 target 분까지 받는다.
-            List<UpbitCandleResponse> candles = upbitClient.getCandles(MINUTE_CANDLE_TYPE, symbol, liveFrom,
-                    BACKFILL_WINDOW_MINUTES);
+        for (String symbol : symbols) {
+            List<MinuteCandle> candles = backfillSource.fetchRecent(symbol, liveFrom, BACKFILL_WINDOW_MINUTES);
             int inserted = 0;
             int alreadyStored = 0;
-            for (UpbitCandleResponse candle : candles) {
-                Instant time = candle.toInstant();
-                if (time.isBefore(windowStart) || time.isAfter(target)) {
+            for (MinuteCandle candle : candles) {
+                if (candle.time().isBefore(windowStart) || candle.time().isAfter(target)) {
                     continue;
                 }
-                if (candleRepository.insertIfAbsent(new MinuteCandle(symbol, time, candle.getOpeningPrice(),
-                        candle.getHighPrice(), candle.getLowPrice(), candle.getTradePrice(),
-                        candle.getCandleAccTradeVolume()))) {
+                if (candleRepository.insertIfAbsent(candle)) {
                     inserted++;
                 } else {
                     alreadyStored++;

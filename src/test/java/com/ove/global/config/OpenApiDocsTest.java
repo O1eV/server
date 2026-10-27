@@ -23,6 +23,10 @@ class OpenApiDocsTest extends IntegrationTestSupport {
                 .andExpect(jsonPath("$.paths['/api/users/me'].get").exists())
                 .andExpect(jsonPath("$.paths['/api/markets'].get").exists())
                 .andExpect(jsonPath("$.paths['/api/markets/{symbol}/candles'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/paper/portfolio'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/paper/orders'].get").exists())
+                .andExpect(jsonPath("$.paths['/api/paper/orders'].post").exists())
+                .andExpect(jsonPath("$.paths['/api/paper/reset'].post").exists())
                 .andExpect(jsonPath("$.components.schemas.ApiErrorResponse").exists())
                 .andExpect(jsonPath("$.components.schemas.LoginRequest").exists());
     }
@@ -60,6 +64,7 @@ class OpenApiDocsTest extends IntegrationTestSupport {
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['401']").exists())
                 .andExpect(jsonPath("$.paths['/api/auth/login'].post.responses['401'].content['application/json'].examples.INVALID_CREDENTIALS").exists())
                 .andExpect(jsonPath("$.paths['/api/markets/{symbol}/candles'].get.responses['404'].content['application/json'].examples.MARKET_NOT_FOUND").exists())
+                .andExpect(jsonPath("$.paths['/api/paper/orders'].post.responses['503'].content['application/json'].examples.MARKET_PRICE_UNAVAILABLE").exists())
                 .andExpect(jsonPath("$.components.schemas.ApiErrorResponse.properties.error.enum", hasItem("INVALID_CREDENTIALS")));
     }
 
