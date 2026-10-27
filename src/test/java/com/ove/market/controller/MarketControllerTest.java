@@ -37,6 +37,8 @@ import com.ove.market.client.UpbitCandleResponse;
 import com.ove.market.client.UpbitClient;
 import com.ove.market.client.UpbitMarketResponse;
 import com.ove.market.client.UpbitTickerResponse;
+import com.ove.signal.domain.Signal;
+import com.ove.signal.repository.SignalRepository;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -54,9 +56,13 @@ class MarketControllerTest {
     @MockitoBean
     private TokenRedisRepository tokenRedisRepository;
 
+    @Autowired
+    private SignalRepository signalRepository;
+
     // 테스트마다 가짜 업비트 종목·현재가를 준비할 때 사용
     @BeforeEach
     void setUp() {
+        signalRepository.deleteAll();
         given(upbitClient.getMarkets()).willReturn(List.of(
                 market("KRW-BTC", "비트코인", "Bitcoin"),
                 market("KRW-ETH", "이더리움", "Ethereum"),
@@ -131,6 +137,72 @@ class MarketControllerTest {
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("종목 목록: 로그인하면 종목별 최신 신호·확신도를 합치고, 신호가 없으면 null로 둔다")
+    void getMarketsMergesLatestSignals() throws Exception {
+        Instant now = Instant.now();
+        signalRepository.save(signal("KRW-BTC", "HOLD", "0.60", now.minusSeconds(60)));
+        signalRepository.save(signal("KRW-BTC", "BUY", "0.71", now));
+        signalRepository.save(signal("KRW-ETH", "SELL", "0.66", now));
+
+        String accessToken = jwtProvider.createAccessToken(UUID.randomUUID()).token();
+        mockMvc.perform(get("/api/markets")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items", hasSize(3)))
+                .andExpect(jsonPath("$.data.items[0].symbol").value("KRW-BTC"))
+                .andExpect(jsonPath("$.data.items[0].signal").value("BUY"))
+                .andExpect(jsonPath("$.data.items[0].confidence").value(0.71))
+                .andExpect(jsonPath("$.data.items[1].symbol").value("KRW-ETH"))
+                .andExpect(jsonPath("$.data.items[1].signal").value("SELL"))
+                .andExpect(jsonPath("$.data.items[1].confidence").value(0.66))
+                .andExpect(jsonPath("$.data.items[2].symbol").value("KRW-XRP"))
+                .andExpect(jsonPath("$.data.items[2].signal").value(nullValue()))
+                .andExpect(jsonPath("$.data.items[2].confidence").value(nullValue()));
+    }
+
+    @Test
+    @DisplayName("종목 목록: 비로그인은 신호가 저장돼 있어도 signal·confidence를 null로 받는다")
+    void anonymousDoesNotReceiveSignals() throws Exception {
+        signalRepository.save(signal("KRW-BTC", "BUY", "0.71", Instant.now()));
+
+        mockMvc.perform(get("/api/markets"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].symbol").value("KRW-BTC"))
+                .andExpect(jsonPath("$.data.items[0].signal").value(nullValue()))
+                .andExpect(jsonPath("$.data.items[0].confidence").value(nullValue()));
+    }
+
+    @Test
+    @DisplayName("종목 목록: signal 필터는 최신 신호가 일치하는 종목만 남기고, 그 뒤에 페이지를 자른다")
+    void getMarketsFiltersByLatestSignalBeforePagination() throws Exception {
+        Instant now = Instant.now();
+        signalRepository.save(signal("KRW-BTC", "BUY", "0.71", now));
+        signalRepository.save(signal("KRW-ETH", "BUY", "0.62", now));
+        signalRepository.save(signal("KRW-XRP", "HOLD", "0.51", now));
+
+        String accessToken = jwtProvider.createAccessToken(UUID.randomUUID()).token();
+        mockMvc.perform(get("/api/markets")
+                        .param("signal", "BUY")
+                        .param("page", "0")
+                        .param("size", "1")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items", hasSize(1)))
+                .andExpect(jsonPath("$.data.items[0].symbol").value("KRW-BTC"))
+                .andExpect(jsonPath("$.data.totalElements").value(2));
+
+        mockMvc.perform(get("/api/markets")
+                        .param("signal", "BUY")
+                        .param("page", "1")
+                        .param("size", "1")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items", hasSize(1)))
+                .andExpect(jsonPath("$.data.items[0].symbol").value("KRW-ETH"))
+                .andExpect(jsonPath("$.data.totalElements").value(2));
     }
 
     @Test
@@ -300,6 +372,13 @@ class MarketControllerTest {
         mockMvc.perform(get("/api/markets/KRW-BTC/candles"))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.error").value("UPSTREAM_UNAVAILABLE"));
+    }
+
+    // 테스트용 최신 신호를 만들 때 사용
+    private Signal signal(String symbol, String value, String confidence, Instant generatedAt) {
+        return new Signal(symbol, "HOLD", value,
+                new BigDecimal("0.70"), new BigDecimal("0.20"), new BigDecimal("0.10"),
+                new BigDecimal(confidence), new BigDecimal("1000"), generatedAt, "model-v1");
     }
 
     // 테스트용 가짜 업비트 종목을 만들 때 사용

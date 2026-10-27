@@ -2,6 +2,7 @@ package com.ove.market.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -19,6 +20,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -37,6 +39,9 @@ import com.ove.market.client.UpbitTickerResponse;
 import com.ove.market.dto.CandleListResponse;
 import com.ove.market.dto.CandleResponse;
 import com.ove.market.dto.MarketListResponse;
+import com.ove.market.dto.MarketResponse;
+import com.ove.signal.dto.SignalSummary;
+import com.ove.signal.service.SignalService;
 
 @ExtendWith(MockitoExtension.class)
 class MarketServiceTest {
@@ -46,6 +51,9 @@ class MarketServiceTest {
     @Mock
     private UpbitClient upbitClient;
 
+    @Mock
+    private SignalService signalService;
+
     @InjectMocks
     private MarketService marketService;
 
@@ -54,7 +62,7 @@ class MarketServiceTest {
     void pageOverflow() {
         stubMarkets();
 
-        MarketListResponse response = marketService.getMarkets(null, null, null, Integer.MAX_VALUE, 100);
+        MarketListResponse response = marketService.getMarkets(null, null, null, Integer.MAX_VALUE, 100, false);
 
         assertThat(response.getItems()).isEmpty();
         assertThat(response.getTotalElements()).isEqualTo(3);
@@ -63,9 +71,9 @@ class MarketServiceTest {
     @Test
     @DisplayName("size가 0이거나 100을 넘으면 업비트를 부르기 전에 INVALID_REQUEST")
     void invalidSize() {
-        assertInvalidRequest(() -> marketService.getMarkets(null, null, null, 0, 0));
-        assertInvalidRequest(() -> marketService.getMarkets(null, null, null, 0, 101));
-        assertInvalidRequest(() -> marketService.getMarkets(null, null, null, -1, 20));
+        assertInvalidRequest(() -> marketService.getMarkets(null, null, null, 0, 0, false));
+        assertInvalidRequest(() -> marketService.getMarkets(null, null, null, 0, 101, false));
+        assertInvalidRequest(() -> marketService.getMarkets(null, null, null, -1, 20, false));
         verifyNoInteractions(upbitClient);
     }
 
@@ -74,7 +82,7 @@ class MarketServiceTest {
     void maxSize() {
         stubMarkets();
 
-        MarketListResponse response = marketService.getMarkets(null, null, null, 0, 100);
+        MarketListResponse response = marketService.getMarkets(null, null, null, 0, 100, false);
 
         assertThat(response.getItems()).hasSize(3);
     }
@@ -179,9 +187,82 @@ class MarketServiceTest {
     void upstreamFailurePropagates() {
         given(upbitClient.getMarkets()).willThrow(new BusinessException(ErrorCode.UPSTREAM_UNAVAILABLE));
 
-        assertThatThrownBy(() -> marketService.getMarkets(null, null, null, 0, 20))
+        assertThatThrownBy(() -> marketService.getMarkets(null, null, null, 0, 20, false))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.UPSTREAM_UNAVAILABLE);
+    }
+
+    @Test
+    @DisplayName("비로그인 조회는 신호를 조회하지 않고 signal·confidence를 null로 둔다")
+    void anonymousDoesNotMergeSignals() {
+        stubMarkets();
+
+        MarketListResponse response = marketService.getMarkets(null, null, null, 0, 20, false);
+
+        assertThat(response.getItems()).allSatisfy(item -> {
+            assertThat(item.getSignal()).isNull();
+            assertThat(item.getConfidence()).isNull();
+        });
+        verifyNoInteractions(signalService);
+    }
+
+    @Test
+    @DisplayName("비로그인 상태에서 signal 필터를 쓰면 업비트를 부르기 전에 UNAUTHORIZED")
+    void signalFilterRequiresLogin() {
+        assertThatThrownBy(() -> marketService.getMarkets(null, null, "BUY", 0, 20, false))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED));
+        verifyNoInteractions(upbitClient);
+        verifyNoInteractions(signalService);
+    }
+
+    @Test
+    @DisplayName("로그인하면 종목별 최신 신호·확신도를 합치고, 신호가 없는 종목은 null로 둔다")
+    void mergesLatestSignalsForLoggedInUser() {
+        stubMarkets();
+        given(signalService.latestSummaries(anyList())).willReturn(Map.of(
+                "KRW-BTC", new SignalSummary("BUY", new BigDecimal("0.71")),
+                "KRW-ETH", new SignalSummary("HOLD", new BigDecimal("0.55"))));
+
+        MarketListResponse response = marketService.getMarkets(null, null, null, 0, 20, true);
+
+        assertThat(response.getItems())
+                .extracting(MarketResponse::getSymbol, MarketResponse::getSignal, MarketResponse::getConfidence)
+                .containsExactly(
+                        tuple("KRW-BTC", "BUY", new BigDecimal("0.71")),
+                        tuple("KRW-ETH", "HOLD", new BigDecimal("0.55")),
+                        tuple("KRW-XRP", null, null));
+    }
+
+    @Test
+    @DisplayName("로그인 사용자의 signal 필터는 최신 신호가 일치하는 종목만 남기고, 그 뒤에 페이지를 자른다")
+    void signalFilterUsesLatestSignalsBeforePagination() {
+        stubMarkets();
+        given(signalService.latestSummaries(anyList())).willReturn(Map.of(
+                "KRW-BTC", new SignalSummary("BUY", new BigDecimal("0.71")),
+                "KRW-ETH", new SignalSummary("BUY", new BigDecimal("0.62")),
+                "KRW-XRP", new SignalSummary("HOLD", new BigDecimal("0.51"))));
+
+        MarketListResponse first = marketService.getMarkets(null, null, "BUY", 0, 1, true);
+        MarketListResponse second = marketService.getMarkets(null, null, "BUY", 1, 1, true);
+
+        assertThat(first.getItems()).extracting(MarketResponse::getSymbol).containsExactly("KRW-BTC");
+        assertThat(first.getTotalElements()).isEqualTo(2);
+        assertThat(second.getItems()).extracting(MarketResponse::getSymbol).containsExactly("KRW-ETH");
+        assertThat(second.getTotalElements()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("signal 필터에 맞는 최신 신호가 없으면 빈 목록을 돌려준다")
+    void signalFilterWithoutMatch() {
+        stubMarkets();
+        given(signalService.latestSummaries(anyList())).willReturn(Map.of(
+                "KRW-BTC", new SignalSummary("HOLD", new BigDecimal("0.71"))));
+
+        MarketListResponse response = marketService.getMarkets(null, null, "SELL", 0, 20, true);
+
+        assertThat(response.getItems()).isEmpty();
+        assertThat(response.getTotalElements()).isZero();
     }
 
     private void assertInvalidRequest(Runnable call) {

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
@@ -20,6 +21,8 @@ import com.ove.market.dto.MarketListResponse;
 import com.ove.market.dto.MarketResponse;
 import com.ove.market.dto.MarketSearchListResponse;
 import com.ove.market.dto.MarketSearchResponse;
+import com.ove.signal.dto.SignalSummary;
+import com.ove.signal.service.SignalService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -37,13 +40,20 @@ public class MarketService {
     private static final int MAX_SEARCH_LIMIT = 50;
 
     private final UpbitClient upbitClient;
+    private final SignalService signalService;
 
     public static void requireSupportedSymbol(String symbol) {
         if (!SUPPORTED_SYMBOLS.contains(symbol)) throw new BusinessException(ErrorCode.MARKET_NOT_FOUND);
     }
 
     // 자산군·시장 상태·신호 필터에 맞는 종목을 페이지 단위로 조회할 때 사용
-    public MarketListResponse getMarkets(String assetClass, String marketState, String signal, int page, int size) {
+    public MarketListResponse getMarkets(String assetClass, String marketState, String signal,
+                                         int page, int size, boolean authenticated) {
+        // signal 필터는 최신 신호를 합칠 수 있는 로그인 사용자만 쓸 수 있다.
+        // 필터 값 검증보다 먼저 확인해, 비로그인 요청은 401로 응답한다.
+        if (signal != null && !authenticated) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
         checkFilter(assetClass, ASSET_CLASSES);
         checkFilter(marketState, MARKET_STATES);
         checkFilter(signal, SIGNALS);
@@ -53,6 +63,10 @@ public class MarketService {
         }
 
         List<UpbitTickerResponse> tickers = upbitClient.getTickers(SUPPORTED_SYMBOLS);
+        // 로그인 사용자에게만 최신 신호를 합친다. 비로그인은 신호를 조회하지도 않는다.
+        Map<String, SignalSummary> latestSignals = authenticated
+                ? signalService.latestSummaries(SUPPORTED_SYMBOLS)
+                : Collections.emptyMap();
 
         List<MarketResponse> result = new ArrayList<>();
         for (UpbitMarketResponse market : getSupportedMarkets()) {
@@ -61,7 +75,8 @@ public class MarketService {
                 continue;
             }
 
-            MarketResponse response = new MarketResponse(market, ticker);
+            MarketResponse response = new MarketResponse(market, ticker,
+                    latestSignals.get(market.getMarket()));
             if (matches(assetClass, response.getAssetClass())
                     && matches(marketState, response.getMarketState())
                     && matches(signal, response.getSignal())) {
@@ -69,7 +84,8 @@ public class MarketService {
             }
         }
 
-        // page가 아주 크면 page * size가 int 범위를 넘어 음수가 되므로 long으로 계산한다.
+        // signal 필터까지 적용한 뒤 페이지를 자른다. page가 아주 크면 page * size가
+        // int 범위를 넘어 음수가 되므로 long으로 계산한다.
         int start = (int) Math.min((long) page * size, result.size());
         int end = Math.min(start + size, result.size());
         return new MarketListResponse(result.subList(start, end), page, size, result.size());

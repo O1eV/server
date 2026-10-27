@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 
 import com.ove.market.client.UpbitMarketResponse;
 import com.ove.market.client.UpbitTickerResponse;
+import com.ove.signal.dto.SignalSummary;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;
@@ -28,13 +29,18 @@ public class MarketResponse {
     private BigDecimal price;
     @Schema(description = "전일 대비 변동률(소수. 0.02 = +2%)", example = "0.0123")
     private BigDecimal changeRate;
-    @Schema(description = "AI 신호(BUY / HOLD / SELL). AI 연결 전이라 항상 null")
+    @Schema(description = "최신 AI 신호(BUY / HOLD / SELL). 비로그인이거나 신호가 없으면 null", example = "BUY")
     private String signal;
-    @Schema(description = "AI 신호의 확신도(0~1). AI 연결 전이라 항상 null")
+    @Schema(description = "최신 AI 신호의 확신도(0~1). 비로그인이거나 신호가 없으면 null", example = "0.71")
     private BigDecimal confidence;
 
-    // 업비트 종목 정보와 현재가로 종목 목록의 한 줄을 만들 때 사용 (signal·confidence는 AI 연결 전이라 null)
+    // 업비트 종목 정보와 현재가만으로 종목 목록의 한 줄을 만들 때 사용 (신호는 null)
     public MarketResponse(UpbitMarketResponse market, UpbitTickerResponse ticker) {
+        this(market, ticker, null);
+    }
+
+    // 로그인 사용자의 종목 목록에 최신 신호 요약을 합칠 때 사용
+    public MarketResponse(UpbitMarketResponse market, UpbitTickerResponse ticker, SignalSummary signal) {
         this.symbol = market.getMarket();
         this.koreanName = market.getKoreanName();
         this.englishName = market.getEnglishName();
@@ -42,7 +48,7 @@ public class MarketResponse {
         this.marketState = ticker.getMarketState();
         this.price = ticker.getTradePrice();
         this.changeRate = ticker.getSignedChangeRate();
-        this.signal = null;
-        this.confidence = null;
+        this.signal = signal == null ? null : signal.signal();
+        this.confidence = signal == null ? null : signal.confidence();
     }
 }
