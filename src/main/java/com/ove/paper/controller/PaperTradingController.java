@@ -19,7 +19,6 @@ import com.ove.paper.dto.PaperOrderResponse;
 import com.ove.paper.dto.PaperPortfolioResponse;
 import com.ove.paper.service.PaperTradingService;
 
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @Validated
@@ -59,7 +58,7 @@ public class PaperTradingController implements PaperTradingControllerDocs {
     @Override
     @PostMapping("/orders")
     public ResponseEntity<ApiResponse<PaperOrderResponse>> placeOrder(
-            @AuthenticationPrincipal AuthUser authUser, @Valid @RequestBody PaperOrderRequest request) {
+            @AuthenticationPrincipal AuthUser authUser, @RequestBody PaperOrderRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(HttpStatus.CREATED, "모의 주문이 체결되었습니다.",
                         paperTradingService.placeOrder(authUser.userId(), request)));

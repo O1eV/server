@@ -14,6 +14,7 @@ import com.ove.paper.dto.PaperPortfolioResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
@@ -65,5 +66,5 @@ public interface PaperTradingControllerDocs {
     @ApiErrorCodes({ErrorCode.INVALID_REQUEST, ErrorCode.TOKEN_EXPIRED, ErrorCode.UNAUTHORIZED,
             ErrorCode.MARKET_NOT_FOUND, ErrorCode.MARKET_PRICE_UNAVAILABLE, ErrorCode.ORDER_AMOUNT_TOO_SMALL,
             ErrorCode.INSUFFICIENT_BALANCE, ErrorCode.INSUFFICIENT_HOLDING, ErrorCode.PAPER_ACCOUNT_NOT_FOUND})
-    ResponseEntity<ApiResponse<PaperOrderResponse>> placeOrder(AuthUser authUser, PaperOrderRequest request);
+    ResponseEntity<ApiResponse<PaperOrderResponse>> placeOrder(AuthUser authUser, @Valid PaperOrderRequest request);
 }
