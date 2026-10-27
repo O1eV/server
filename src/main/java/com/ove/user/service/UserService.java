@@ -23,6 +23,7 @@ public class UserService {
 
     public MyInfoResponse getMyInfo(UUID userId) {
         return userRepository.findById(userId)
+                .filter(user -> user.getStatus() == com.ove.user.domain.UserStatus.ACTIVE)
                 .map(user -> MyInfoResponse.from(user, watchlistRepository.countByUserId(userId)))
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }

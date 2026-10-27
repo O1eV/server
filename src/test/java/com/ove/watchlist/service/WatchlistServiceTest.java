@@ -41,11 +41,14 @@ class WatchlistServiceTest {
     @Mock
     private MarketService marketService;
 
+    @Mock
+    private com.ove.user.repository.UserRepository userRepository;
+
     private WatchlistService watchlistService;
 
     @BeforeEach
     void setUp() {
-        watchlistService = new WatchlistService(watchlistRepository, writeService, marketService);
+        watchlistService = new WatchlistService(watchlistRepository, writeService, marketService, userRepository);
     }
 
     @Test
@@ -94,6 +97,7 @@ class WatchlistServiceTest {
     @Test
     @DisplayName("목록: 종목명·현재가를 채우고 signal·confidence는 null")
     void getWatchlist() {
+        given(userRepository.existsById(USER_ID)).willReturn(true);
         given(watchlistRepository.findByUserIdOrderByAddedAtAscIdAsc(USER_ID))
                 .willReturn(List.of(watchlist("KRW-BTC"), watchlist("KRW-ETH")));
         given(marketService.getSupportedMarkets()).willReturn(List.of(
@@ -117,6 +121,7 @@ class WatchlistServiceTest {
     @Test
     @DisplayName("목록: 업비트가 실패하면 price·koreanName만 null이고 목록은 정상 반환")
     void getWatchlistUpstreamFailure() {
+        given(userRepository.existsById(USER_ID)).willReturn(true);
         given(watchlistRepository.findByUserIdOrderByAddedAtAscIdAsc(USER_ID)).willReturn(List.of(watchlist("KRW-BTC")));
         given(marketService.getSupportedMarkets()).willThrow(new BusinessException(ErrorCode.UPSTREAM_UNAVAILABLE));
         given(marketService.getSupportedTickers()).willThrow(new BusinessException(ErrorCode.UPSTREAM_UNAVAILABLE));
@@ -132,6 +137,7 @@ class WatchlistServiceTest {
     @Test
     @DisplayName("목록: 비어 있으면 업비트를 부르지 않고 빈 목록")
     void getWatchlistEmpty() {
+        given(userRepository.existsById(USER_ID)).willReturn(true);
         given(watchlistRepository.findByUserIdOrderByAddedAtAscIdAsc(USER_ID)).willReturn(List.of());
 
         assertThat(watchlistService.getWatchlist(USER_ID).getItems()).isEmpty();

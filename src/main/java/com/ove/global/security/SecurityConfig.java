@@ -45,7 +45,8 @@ public class SecurityConfig {
     private static final String[] PUBLIC_GET_PATHS = {
             "/api/markets",
             "/api/markets/search",
-            "/api/markets/*/candles"
+            "/api/markets/*/candles",
+            "/api/markets/*/price"
     };
 
     private static final String[] SWAGGER_PATHS = {

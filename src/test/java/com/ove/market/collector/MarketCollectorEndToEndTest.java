@@ -128,6 +128,13 @@ class MarketCollectorEndToEndTest extends IntegrationTestSupport {
                     recorder.template().opsForHash().get("price:KRW-BTC", "price")))).isTrue();
             assertThat(Await.until(() -> !recorder.messagesOn("prices:KRW-BTC").isEmpty())).isTrue();
 
+            // 수집된 동일한 해시가 브라우저용 REST 응답까지 전달되는지 확인한다.
+            mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                    .get("/api/markets/KRW-BTC/price"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.symbol").value("KRW-BTC"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.price").value(110));
+
             // 접속 직전 분 보충 (접속한 분이 끝나고 유예가 지나면 실행: 시계 12:00:59 → 약 1.2초 뒤)
             assertThat(Await.until(() -> candleAt("KRW-BTC", M0) != null, Duration.ofSeconds(10))).isTrue();
             assertThat((BigDecimal) candleAt("KRW-BTC", M0).get("open")).isEqualByComparingTo("90");

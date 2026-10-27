@@ -38,6 +38,10 @@ public class MarketService {
 
     private final UpbitClient upbitClient;
 
+    public static void requireSupportedSymbol(String symbol) {
+        if (!SUPPORTED_SYMBOLS.contains(symbol)) throw new BusinessException(ErrorCode.MARKET_NOT_FOUND);
+    }
+
     // 자산군·시장 상태·신호 필터에 맞는 종목을 페이지 단위로 조회할 때 사용
     public MarketListResponse getMarkets(String assetClass, String marketState, String signal, int page, int size) {
         checkFilter(assetClass, ASSET_CLASSES);

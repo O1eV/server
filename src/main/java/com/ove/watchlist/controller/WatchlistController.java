@@ -18,6 +18,7 @@ import com.ove.watchlist.dto.WatchlistAddResponse;
 import com.ove.watchlist.dto.WatchlistListResponse;
 import com.ove.watchlist.service.WatchlistService;
 
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -29,6 +30,7 @@ public class WatchlistController {
     private final WatchlistService watchlistService;
 
     // 관심 종목에 종목을 추가할 때 사용
+    @Operation(summary = "관심 종목 등록", description = "symbol을 전달합니다. 기본 최대 20개. 중복 등록·개수 초과는 409입니다.")
     @PostMapping
     public ResponseEntity<ApiResponse<WatchlistAddResponse>> add(
             @AuthenticationPrincipal AuthUser authUser,
@@ -39,6 +41,7 @@ public class WatchlistController {
     }
 
     // 내 관심 종목을 현재가와 함께 조회할 때 사용
+    @Operation(summary = "내 관심 종목 조회")
     @GetMapping
     public ResponseEntity<ApiResponse<WatchlistListResponse>> getWatchlist(
             @AuthenticationPrincipal AuthUser authUser) {
@@ -47,6 +50,7 @@ public class WatchlistController {
     }
 
     // 관심 종목에서 종목을 삭제할 때 사용
+    @Operation(summary = "관심 종목 삭제", description = "본인의 관심 종목만 삭제합니다. 없는 항목은 404입니다.")
     @DeleteMapping("/{symbol}")
     public ResponseEntity<ApiResponse<Void>> remove(
             @AuthenticationPrincipal AuthUser authUser,

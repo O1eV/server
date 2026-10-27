@@ -10,6 +10,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 import com.ove.global.exception.BusinessException;
+import com.ove.global.exception.ErrorCode;
+import com.ove.user.repository.UserRepository;
 import com.ove.market.client.UpbitMarketResponse;
 import com.ove.market.client.UpbitTickerResponse;
 import com.ove.market.service.MarketService;
@@ -31,12 +33,14 @@ public class WatchlistService {
     private final WatchlistRepository watchlistRepository;
     private final WatchlistWriteService writeService;
     private final MarketService marketService;
+    private final UserRepository userRepository;
 
     public WatchlistService(WatchlistRepository watchlistRepository, WatchlistWriteService writeService,
-                            MarketService marketService) {
+                            MarketService marketService, UserRepository userRepository) {
         this.watchlistRepository = watchlistRepository;
         this.writeService = writeService;
         this.marketService = marketService;
+        this.userRepository = userRepository;
     }
 
     // 관심 종목을 추가할 때 사용. 종목 확인(업비트 실패 시 502)을 트랜잭션 밖에서 먼저 끝낸 뒤,
@@ -50,8 +54,11 @@ public class WatchlistService {
     // 관심 종목 목록을 등록 순서(오래된 것부터)로 돌려줄 때 사용
     // 업비트가 잠깐 안 되더라도 내 목록 자체는 보여 줘야 해서, 종목명·현재가 조회가 실패하면 그 값만 null로 두고 나머지는 정상 반환한다.
     // signal·confidence는 AI 서버가 생기기 전까지 항상 null이다.
-    // 쿼리가 하나뿐이라 트랜잭션을 걸지 않는다. 업비트를 부르는 동안 DB 커넥션을 잡고 있지 않게 하려는 목적도 있다.
+    // 조회에는 트랜잭션을 걸지 않는다. 업비트를 부르는 동안 DB 커넥션을 잡고 있지 않게 한다.
     public WatchlistListResponse getWatchlist(UUID userId) {
+        if (!userRepository.existsById(userId)) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
         List<Watchlist> watchlists = watchlistRepository.findByUserIdOrderByAddedAtAscIdAsc(userId);
         if (watchlists.isEmpty()) {
             return new WatchlistListResponse(List.of());
