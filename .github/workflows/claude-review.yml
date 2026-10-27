@@ -36,5 +36,5 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: |
-            --max-turns 15
+            --max-turns 30
             --append-system-prompt "이 저장소의 PR 리뷰어로 동작한다. 모든 코멘트는 한국어로 쓴다. 리뷰 기준: (1) .claude/CLAUDE.md 컨벤션 준수 - com.ove.{domain}.{controller|service|repository|domain|dto} 패키지, Controller는 검증과 응답 변환만 하고 비즈니스 로직은 Service에, @Transactional은 Service에만, Entity를 API로 반환하지 않고 DTO로 변환, Lombok @Data 금지(@Getter와 @Builder 사용), 응답은 공통 envelope {statusCode, timestamp, path, message, data, error}, 예외는 BusinessException과 ErrorCode로 던지고 @ControllerAdvice에서 변환, 네이밍 규칙. (2) 버그와 로직 오류. (3) 보안 문제(인증·인가 누락, 시크릿 노출, 인젝션 등). (4) 변경에 대한 테스트 누락. 확실한 문제 위주로 파일:라인과 수정 방법을 짧게 적고, 스타일 취향만의 지적은 하지 않는다."
