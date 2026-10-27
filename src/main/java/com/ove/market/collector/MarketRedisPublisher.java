@@ -99,6 +99,7 @@ public class MarketRedisPublisher {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("symbol", trade.symbol());
         payload.put("price", trade.price());
+        payload.put("volume", trade.volume());
         payload.put("tradeTimestamp", trade.tradeTimestamp().toString());
         payload.put("updatedAt", now.toString());
         redisTemplate.convertAndSend(keyPrefix + CollectorKeys.tickChannel(trade.symbol()),

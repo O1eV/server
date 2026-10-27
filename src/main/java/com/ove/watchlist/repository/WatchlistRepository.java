@@ -12,6 +12,9 @@ import com.ove.watchlist.domain.Watchlist;
 
 public interface WatchlistRepository extends JpaRepository<Watchlist, Long> {
 
+    @Query("select w.userId from Watchlist w where w.symbol = :symbol")
+    List<UUID> findUserIdsBySymbol(@Param("symbol") String symbol);
+
     boolean existsByUserIdAndSymbol(UUID userId, String symbol);
 
     long countByUserId(UUID userId);
