@@ -22,7 +22,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 회원탈퇴. 비밀번호를 확인한 뒤 회원을 soft delete(개인정보 익명화)한다.
+ * 회원탈퇴. 비밀번호를 확인한 뒤 회원을 soft delete(개인정보 익명화)하고 관심종목을 지운다.
  * 로그인 정보(Redis)는 DB 트랜잭션이 커밋된 뒤에 정리한다. DB가 롤백됐는데 토큰만 지워지면 안 되기 때문이다.
  *
  * 모의계좌는 지우지 않고 남긴다. 계좌에는 개인정보가 없고(잔액·통화뿐), 모의투자 주문·보유가 계좌를 외래키로 참조해서
@@ -57,9 +57,10 @@ public class UserWithdrawService {
         }
 
         user.withdraw(Instant.now());
-        // 관심 종목은 개인정보이므로 탈퇴와 함께 지운다.
-        // 모의계좌·주문·보유는 개인정보가 없어 지우지 않고 익명화된 회원에 연결된 채로 남긴다.
-        watchlistRepository.deleteAllByUserId(authUser.userId());
+        // 관심종목은 회원이 고른 정보라 같은 트랜잭션에서 지운다(탈퇴가 롤백되면 함께 되돌아간다).
+        watchlistRepository.deleteAllByUserId(user.getId());
+        // TODO(새 기능이 사용자 데이터를 가지게 되면 여기에 삭제 호출을 추가한다): 사용자 API 키, 기기 토큰.
+        //  모의계좌·주문·보유는 개인정보가 없어 지우지 않고 익명화된 회원에 연결된 채로 남긴다.
 
         afterCommit(() -> clearLoginState(authUser));
     }

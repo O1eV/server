@@ -29,6 +29,7 @@ import com.ove.global.security.JwtProvider;
 import com.ove.support.IntegrationTestSupport;
 import com.ove.user.domain.User;
 import com.ove.user.domain.UserStatus;
+import com.ove.watchlist.domain.Watchlist;
 
 import jakarta.servlet.http.Cookie;
 
@@ -155,6 +156,27 @@ class UserWithdrawControllerTest extends IntegrationTestSupport {
         assertThat(statuses.stream().filter(s -> s == 200).count()).isEqualTo(1);
         assertThat(statuses.stream().filter(s -> s == 404).count()).isEqualTo(threads - 1);
         assertThat(userRepository.findById(userId).orElseThrow().getStatus()).isEqualTo(UserStatus.WITHDRAWN);
+    }
+
+    @Test
+    @DisplayName("탈퇴하면 내 관심종목만 지워지고, 비밀번호가 틀리면 그대로 남는다")
+    void withdrawalDeletesOwnWatchlistOnly() throws Exception {
+        register("a@ove.com", "에이회원");
+        register("b@ove.com", "비회원");
+        UUID aId = userRepository.findByEmail("a@ove.com").orElseThrow().getId();
+        UUID bId = userRepository.findByEmail("b@ove.com").orElseThrow().getId();
+        watchlistRepository.save(Watchlist.builder().userId(aId).symbol("KRW-BTC").build());
+        watchlistRepository.save(Watchlist.builder().userId(aId).symbol("KRW-ETH").build());
+        watchlistRepository.save(Watchlist.builder().userId(bId).symbol("KRW-BTC").build());
+        Session a = login("a@ove.com");
+
+        withdraw(a.accessToken(), "wrong-password1").andExpect(status().isUnauthorized());
+        assertThat(watchlistRepository.countByUserId(aId)).isEqualTo(2);
+
+        withdraw(a.accessToken(), PASSWORD).andExpect(status().isOk());
+
+        assertThat(watchlistRepository.countByUserId(aId)).isZero();
+        assertThat(watchlistRepository.countByUserId(bId)).isEqualTo(1);
     }
 
     @Test

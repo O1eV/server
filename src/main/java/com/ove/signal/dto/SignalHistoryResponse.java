@@ -8,58 +8,28 @@ import org.springframework.data.domain.Page;
 
 import com.ove.signal.domain.Signal;
 
-import lombok.Builder;
-import lombok.Getter;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
- * 신호 전환 이력. 같은 신호가 이어지는 스냅샷은 previousSignal이 null이라 여기에 포함되지 않는다.
+ * 신호 전환 이력 한 페이지. previousSignal이 있는 행(신호가 바뀐 시점)만 담는다.
+ * 항목 필드는 LatestSignalResponse와 이름·형식을 맞췄고, 과거 행이라 stale은 없다.
  */
-@Getter
-@Builder
-public class SignalHistoryResponse {
-
-    private final List<Item> items;
-    private final int page;
-    private final int size;
-    private final long totalElements;
-    private final int totalPages;
+@Schema(description = "신호 전환 이력 페이지(최신순)")
+public record SignalHistoryResponse(List<Item> items, int page, int size, long totalElements, int totalPages) {
 
     public static SignalHistoryResponse from(Page<Signal> signals) {
-        return SignalHistoryResponse.builder()
-                .items(signals.getContent().stream().map(Item::from).toList())
-                .page(signals.getNumber())
-                .size(signals.getSize())
-                .totalElements(signals.getTotalElements())
-                .totalPages(signals.getTotalPages())
-                .build();
+        return new SignalHistoryResponse(signals.getContent().stream().map(Item::from).toList(),
+                signals.getNumber(), signals.getSize(), signals.getTotalElements(), signals.getTotalPages());
     }
 
-    @Getter
-    @Builder
-    public static class Item {
+    public record Item(Long signalId, String symbol, String previousSignal, String signal,
+            BigDecimal buyProbability, BigDecimal holdProbability, BigDecimal sellProbability,
+            BigDecimal confidence, BigDecimal price, Instant generatedAt, String modelVersion) {
 
-        private final Long signalId;
-        private final String previousSignal;
-        private final String signal;
-        private final BigDecimal buyProbability;
-        private final BigDecimal holdProbability;
-        private final BigDecimal sellProbability;
-        private final BigDecimal confidence;
-        private final BigDecimal price;
-        private final Instant generatedAt;
-
-        private static Item from(Signal signal) {
-            return Item.builder()
-                    .signalId(signal.getId())
-                    .previousSignal(signal.getPreviousSignal() == null ? null : signal.getPreviousSignal().name())
-                    .signal(signal.getSignal().name())
-                    .buyProbability(signal.getBuyProbability())
-                    .holdProbability(signal.getHoldProbability())
-                    .sellProbability(signal.getSellProbability())
-                    .confidence(signal.getConfidence())
-                    .price(signal.getPrice())
-                    .generatedAt(signal.getGeneratedAt())
-                    .build();
+        static Item from(Signal value) {
+            return new Item(value.getId(), value.getSymbol(), value.getPreviousSignal(), value.getSignal(),
+                    value.getBuyProbability(), value.getHoldProbability(), value.getSellProbability(),
+                    value.getConfidence(), value.getPrice(), value.getGeneratedAt(), value.getModelVersion());
         }
     }
 }

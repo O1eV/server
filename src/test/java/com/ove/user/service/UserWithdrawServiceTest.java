@@ -62,8 +62,7 @@ class UserWithdrawServiceTest {
     void setUp() {
         service = new UserWithdrawService(userRepository, passwordEncoder, tokenRedisRepository,
                 new JwtProperties("test-secret-key-for-ove-backend-must-be-at-least-32-bytes",
-                        ACCESS_TTL, Duration.ofDays(14)),
-                watchlistRepository);
+                        ACCESS_TTL, Duration.ofDays(14)), watchlistRepository);
     }
 
     @AfterEach
@@ -94,8 +93,7 @@ class UserWithdrawServiceTest {
         assertThat(user.getNickname()).isNotEqualTo("오브");
         // 비밀번호 해시도 BCrypt 형식이 아닌 값으로 덮어써서 어떤 입력과도 일치하지 않는다
         assertThat(user.getPassword()).isEqualTo("!withdrawn");
-        // 관심 종목은 남기지 않는다
-        verify(watchlistRepository).deleteAllByUserId(user.getId());
+        verify(watchlistRepository).deleteAllByUserId(user.getId()); // 관심종목도 같은 트랜잭션에서 지운다
     }
 
     @Test
@@ -128,8 +126,9 @@ class UserWithdrawServiceTest {
         assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
         assertThat(user.getEmail()).isEqualTo("user@ove.com");
         assertThat(user.getDeletedAt()).isNull();
+        verifyNoInteractions(watchlistRepository); // 비밀번호가 틀리면 관심종목도 남는다
         TransactionSynchronizationUtils.triggerAfterCommit();
-        verifyNoInteractions(tokenRedisRepository, watchlistRepository);
+        verifyNoInteractions(tokenRedisRepository);
     }
 
     @Test
