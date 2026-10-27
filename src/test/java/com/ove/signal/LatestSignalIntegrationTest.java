@@ -1,9 +1,12 @@
 package com.ove.signal;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
 import com.ove.auth.repository.TokenRedisRepository;
 import com.ove.global.security.JwtProvider;
 import com.ove.signal.domain.Signal;
+import com.ove.signal.dto.SignalSummary;
 import com.ove.signal.repository.SignalRepository;
+import com.ove.signal.service.SignalService;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -24,12 +29,16 @@ class LatestSignalIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired JwtProvider jwt;
     @Autowired SignalRepository repository;
+    @Autowired SignalService signalService;
     @MockitoBean TokenRedisRepository tokens;
     @Autowired com.ove.realtime.service.RealtimePublisher publisher;
 
     private String token() { return "Bearer " + jwt.createAccessToken(UUID.randomUUID()).token(); }
     private Signal signal(Instant time, String value) {
-        return new Signal("KRW-BTC", "HOLD", value, new BigDecimal("0.71"), new BigDecimal("0.21"),
+        return signal("KRW-BTC", time, value);
+    }
+    private Signal signal(String symbol, Instant time, String value) {
+        return new Signal(symbol, "HOLD", value, new BigDecimal("0.71"), new BigDecimal("0.21"),
             new BigDecimal("0.08"), new BigDecimal("0.71"), new BigDecimal("98500000"), time, "model-v1");
     }
     @Test void 로그인_필수() throws Exception {
@@ -67,5 +76,29 @@ class LatestSignalIntegrationTest {
     @Test void 미지원_종목은_404() throws Exception {
         mvc.perform(get("/api/signals/UNKNOWN").header("Authorization", token()))
             .andExpect(status().isNotFound()).andExpect(jsonPath("$.error").value("MARKET_NOT_FOUND"));
+    }
+
+    @Test void 여러_종목의_최신_신호를_한_번에_조회한다() {
+        repository.saveAndFlush(signal("KRW-BTC", Instant.now().minusSeconds(60), "HOLD"));
+        repository.saveAndFlush(signal("KRW-BTC", Instant.now(), "BUY"));
+        repository.saveAndFlush(signal("KRW-ETH", Instant.now(), "SELL"));
+
+        Map<String, SignalSummary> latest = signalService.latestSummaries(
+            List.of("KRW-BTC", "KRW-ETH", "KRW-XRP"));
+
+        assertThat(latest).containsOnlyKeys("KRW-BTC", "KRW-ETH");
+        assertThat(latest.get("KRW-BTC").signal()).isEqualTo("BUY");
+        assertThat(latest.get("KRW-BTC").confidence()).isEqualByComparingTo("0.71");
+        assertThat(latest.get("KRW-ETH").signal()).isEqualTo("SELL");
+    }
+
+    @Test void 같은_시각이면_나중에_저장된_신호를_최신으로_본다() {
+        Instant time = Instant.now();
+        repository.saveAndFlush(signal("KRW-BTC", time, "HOLD"));
+        repository.saveAndFlush(signal("KRW-BTC", time, "SELL"));
+
+        Map<String, SignalSummary> latest = signalService.latestSummaries(List.of("KRW-BTC"));
+
+        assertThat(latest.get("KRW-BTC").signal()).isEqualTo("SELL");
     }
 }

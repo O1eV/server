@@ -27,8 +27,10 @@ public interface MarketControllerDocs {
     @Operation(summary = "종목 목록 조회", description = """
             지원하는 종목(현재 업비트 코인 KRW-BTC, KRW-ETH, KRW-XRP)을 필터링해 페이지 단위로 돌려줍니다.
             **로그인 없이 호출할 수 있고**, Bearer 토큰을 보내면 로그인 상태로 처리됩니다.
-            - `signal` 필터는 로그인한 회원만 쓸 수 있습니다(비로그인이면 `UNAUTHORIZED`).
-            - 각 종목의 `signal`·`confidence`는 AI 연결 전이라 항상 null입니다.
+            - 로그인한 회원에게는 각 종목의 최신 `signal`·`confidence`를 합쳐서 돌려줍니다. 신호가 없으면 null입니다.
+            - 비로그인 응답의 `signal`·`confidence`는 항상 null입니다.
+            - `signal` 필터는 로그인한 회원만 쓸 수 있고, 최신 신호가 필터 값과 같은 종목만 남깁니다(비로그인이면 `UNAUTHORIZED`).
+            - 필터를 모두 적용한 뒤 `page`·`size`로 자릅니다.
             - 현재가는 업비트에서 가져오며 최대 1.5초 전 값일 수 있습니다. 업비트가 응답하지 않으면 `UPSTREAM_UNAVAILABLE`(502)입니다.
             """)
     @ApiOptionalAuth
@@ -40,7 +42,7 @@ public interface MarketControllerDocs {
                     allowableValues = {"COIN", "KR_STOCK", "US_STOCK"})) String assetClass,
             @Parameter(description = "시장 상태 필터(전일 대비 변동률 기준)", schema = @io.swagger.v3.oas.annotations.media.Schema(
                     allowableValues = {"UP", "DOWN", "SIDEWAYS", "VOLATILE"})) String marketState,
-            @Parameter(description = "신호 필터. 로그인한 회원만 사용할 수 있습니다.", schema = @io.swagger.v3.oas.annotations.media.Schema(
+            @Parameter(description = "최신 신호 필터. 로그인한 회원만 사용할 수 있습니다.", schema = @io.swagger.v3.oas.annotations.media.Schema(
                     allowableValues = {"BUY", "HOLD", "SELL"})) String signal,
             @Parameter(description = "페이지 번호(0부터 시작)", example = "0") int page,
             @Parameter(description = "페이지 크기(1~100)", example = "20") int size);
