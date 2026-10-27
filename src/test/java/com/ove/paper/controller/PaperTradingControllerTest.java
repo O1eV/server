@@ -185,6 +185,18 @@ class PaperTradingControllerTest extends IntegrationTestSupport {
     }
 
     @Test
+    void 업비트_종목_확인_실패는_503_MARKET_PRICE_UNAVAILABLE이다() throws Exception {
+        String accessToken = registerAndLogin();
+        willThrow(new BusinessException(com.ove.global.exception.ErrorCode.MARKET_PRICE_UNAVAILABLE))
+                .given(marketPriceProvider).validateMarket("KRW-BTC");
+
+        order(accessToken, "KRW-BTC", "BUY", "1")
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").value("MARKET_PRICE_UNAVAILABLE"));
+        assertThat(paperOrderRepository.count()).isZero();
+    }
+
+    @Test
     void 반올림_후_0원인_주문은_400_ORDER_AMOUNT_TOO_SMALL이다() throws Exception {
         String accessToken = registerAndLogin();
         given(marketPriceProvider.getLatestPrice("KRW-BTC")).willReturn(new BigDecimal("0.00000001"));

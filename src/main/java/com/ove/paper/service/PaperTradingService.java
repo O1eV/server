@@ -64,6 +64,10 @@ public class PaperTradingService {
     /**
      * 종목 존재 확인과 시세 조회를 트랜잭션 밖에서 끝낸 뒤, 체결만 짧은 트랜잭션으로 처리한다.
      * 체결가는 클라이언트 입력이 아니라 서버가 조회한 최신가만 사용한다.
+     *
+     * <p>거래소 종목 목록에 없는 종목(상장폐지·거래 중단)은 보유 중이어도 주문할 수 없다.
+     * 매도도 MARKET_NOT_FOUND(404)로 거절되며, 해당 보유 종목은 POST /api/paper/reset으로만 정리할 수 있다.
+     * 시세가 없는 종목을 평균 매수가로 청산하는 기능은 MVP 범위에서 제공하지 않는다.
      */
     public PaperOrderResponse placeOrder(UUID userId, PaperOrderRequest request) {
         String symbol = normalizeSymbol(request.getSymbol());

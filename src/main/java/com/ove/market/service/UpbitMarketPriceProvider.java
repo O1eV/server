@@ -21,6 +21,7 @@ import com.ove.market.client.UpbitTickerResponse;
  * Upbit 공개 REST API의 현재가를 모의 주문 체결가로 사용한다.
  * 업비트 호출 코드는 UpbitClient 한 곳에 두고(타임아웃·429 백오프·현재가 짧은 캐시 포함) 여기서는 재사용만 한다.
  * 주문 체결가는 시세를 못 구하면 임의 가격으로 대체하지 않고 거절하지만, 포트폴리오 평가는 일부 종목이 빠져도 계속 조회한다.
+ * 주문 경로에서는 종목 목록 조회 실패도 MARKET_PRICE_UNAVAILABLE(503)로 통일해, 클라이언트가 같은 업비트 장애를 한 코드로 처리하게 한다.
  */
 @Service
 public class UpbitMarketPriceProvider implements MarketPriceProvider {
@@ -37,7 +38,7 @@ public class UpbitMarketPriceProvider implements MarketPriceProvider {
      */
     @Override
     public void validateMarket(String symbol) {
-        List<UpbitMarketResponse> markets = upbitClient.getMarkets();
+        List<UpbitMarketResponse> markets = fetchMarkets();
         boolean exists = markets.stream().anyMatch(market -> market.getMarket().equals(symbol));
         if (!exists) {
             throw new BusinessException(ErrorCode.MARKET_NOT_FOUND);
@@ -77,7 +78,7 @@ public class UpbitMarketPriceProvider implements MarketPriceProvider {
 
         List<String> requestSymbols;
         try {
-            List<UpbitMarketResponse> markets = upbitClient.getMarkets();
+            List<UpbitMarketResponse> markets = fetchMarkets();
             if (markets == null || markets.isEmpty()) {
                 return Map.of();
             }
@@ -98,6 +99,21 @@ public class UpbitMarketPriceProvider implements MarketPriceProvider {
             return Map.copyOf(fetchPrices(requestSymbols));
         } catch (BusinessException e) {
             return Map.of();
+        }
+    }
+
+    /**
+     * 거래소 종목 목록을 조회한다. 업비트 호출 실패는 주문 시세 조회와 같은 MARKET_PRICE_UNAVAILABLE(503)로 맞춘다.
+     * 포트폴리오 조회는 이 예외를 받아 일부 종목을 평균 매수가로 평가하는 쪽으로 대체한다.
+     */
+    private List<UpbitMarketResponse> fetchMarkets() {
+        try {
+            return upbitClient.getMarkets();
+        } catch (BusinessException e) {
+            if (e.getErrorCode() == ErrorCode.UPSTREAM_UNAVAILABLE) {
+                throw new BusinessException(ErrorCode.MARKET_PRICE_UNAVAILABLE);
+            }
+            throw e;
         }
     }
 

@@ -46,6 +46,26 @@ class UpbitMarketPriceProviderTest {
     }
 
     @Test
+    @DisplayName("종목 목록 조회가 업비트 장애로 실패하면 가격 조회와 같은 MARKET_PRICE_UNAVAILABLE(503)로 거절한다")
+    void validateMarketMapsUpstreamFailureToPriceUnavailable() {
+        given(upbitClient.getMarkets()).willThrow(new BusinessException(ErrorCode.UPSTREAM_UNAVAILABLE));
+
+        assertThatThrownBy(() -> provider.validateMarket("KRW-BTC"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MARKET_PRICE_UNAVAILABLE));
+    }
+
+    @Test
+    @DisplayName("종목 목록 조회의 다른 업무 예외는 그대로 올린다")
+    void validateMarketPropagatesOtherBusinessExceptions() {
+        given(upbitClient.getMarkets()).willThrow(new BusinessException(ErrorCode.INVALID_REQUEST));
+
+        assertThatThrownBy(() -> provider.validateMarket("KRW-BTC"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+    }
+
+    @Test
     @DisplayName("업비트 현재가(trade_price)를 체결가로 돌려준다")
     void returnsTradePrice() {
         given(upbitClient.getTickers(List.of("KRW-BTC"))).willReturn(List.of(ticker("KRW-BTC", "150000000.5")));

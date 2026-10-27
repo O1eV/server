@@ -10,7 +10,8 @@ import java.util.Map;
 public interface MarketPriceProvider {
 
     /**
-     * 거래소에 실제로 존재하는 종목인지 확인한다. 없으면 MARKET_NOT_FOUND를 던진다.
+     * 거래소에 실제로 존재하는 종목인지 확인한다.
+     * 없으면 MARKET_NOT_FOUND, 거래소 장애로 확인할 수 없으면 MARKET_PRICE_UNAVAILABLE을 던진다.
      */
     void validateMarket(String symbol);
 

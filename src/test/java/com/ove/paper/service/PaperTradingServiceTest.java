@@ -260,6 +260,22 @@ class PaperTradingServiceTest {
         then(paperOrderRepository).shouldHaveNoInteractions();
     }
 
+    @Test
+    void 상장폐지된_보유_종목은_매도도_404로_거절한다() {
+        willThrow(new BusinessException(ErrorCode.MARKET_NOT_FOUND))
+                .given(marketPriceProvider).validateMarket("KRW-OLD");
+
+        assertThatThrownBy(() -> paperTradingService.placeOrder(USER_ID,
+                order("KRW-OLD", OrderSide.SELL, "1")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MARKET_NOT_FOUND));
+
+        then(marketPriceProvider).should(never()).getLatestPrice(anyString());
+        then(paperAccountRepository).shouldHaveNoInteractions();
+        then(paperHoldingRepository).shouldHaveNoInteractions();
+        then(paperOrderRepository).shouldHaveNoInteractions();
+    }
+
     private PaperAccount account(String balance) {
         PaperAccount result = PaperAccount.builder()
                 .balance(new BigDecimal(balance))
