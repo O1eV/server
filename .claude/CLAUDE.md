@@ -70,3 +70,10 @@ Upbit WebSocket / KIS API
 - Each run uses the user's Claude subscription quota. Call it only when needed.
 - The bot review is for reference only. It does not replace the one teammate review required before merge.
 - Before merging, confirm the `Build and Test` check passed. There is no branch protection; this is a team rule.
+
+## Stock quotes (Kiwoom, optional)
+
+- Demo-only and off by default (`collector.kiwoom.enabled=false`). Uses Kiwoom REST/WebSocket quote APIs only (realtime 0B/0s, token au10001/au10002, minute chart ka10080). Order and account TRs must never be added; `KiwoomTrAllowlist` blocks them.
+- App Key/Secret come only from env vars `KIWOOM_APP_KEY` and `KIWOOM_APP_SECRET`. Never put keys or tokens in the repo, tests, or logs. Tests use fake servers and never connect to real Kiwoom.
+- Personal-key local demo only. Kiwoom's terms forbid providing quotes to third parties, so the collector refuses to start under the `prod` profile and stock data must not be exposed through public APIs or STOMP.
+- Kiwoom Redis keys and channels use the `demo:` prefix (`demo:price:{code}`, `demo:prices:{code}`, `demo:candles.closed:{code}`) so they never mix with coin keys. Stock candles are stored in the `candles` table by 6-digit code.

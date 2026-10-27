@@ -21,6 +21,8 @@ public class MarketRedisPublisher {
     private final ObjectMapper objectMapper;
     private final Duration priceTtl;
     private final Duration tickInterval;
+    // Redis 키·채널 이름 앞에 붙는 접두사. 업비트(코인)는 "", 키움(주식 시연용)은 "demo:"라서 서로 키가 섞이지 않는다.
+    private final String keyPrefix;
 
     private final Map<String, Instant> latestTradeAt = new HashMap<>();
     private final Map<String, Instant> lastTickAt = new HashMap<>();
@@ -28,6 +30,12 @@ public class MarketRedisPublisher {
 
     public MarketRedisPublisher(StringRedisTemplate redisTemplate, ObjectMapper objectMapper,
                                 Duration priceTtl, Duration tickInterval) {
+        this(redisTemplate, objectMapper, priceTtl, tickInterval, "");
+    }
+
+    public MarketRedisPublisher(StringRedisTemplate redisTemplate, ObjectMapper objectMapper,
+                                Duration priceTtl, Duration tickInterval, String keyPrefix) {
+        this.keyPrefix = keyPrefix;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.priceTtl = priceTtl;
@@ -46,7 +54,7 @@ public class MarketRedisPublisher {
         latestTradeAt.put(trade.symbol(), trade.tradeTimestamp());
 
         // changeRate는 체결 메시지로는 알 수 없어서 이번에는 넣지 않는다.
-        String key = CollectorKeys.priceKey(trade.symbol());
+        String key = keyPrefix + CollectorKeys.priceKey(trade.symbol());
         Map<String, String> hash = new LinkedHashMap<>();
         hash.put("price", trade.price().toPlainString());
         hash.put("tradeTimestamp", trade.tradeTimestamp().toString());
@@ -83,7 +91,7 @@ public class MarketRedisPublisher {
         payload.put("low", candle.low());
         payload.put("close", candle.close());
         payload.put("volume", candle.volume());
-        redisTemplate.convertAndSend(CollectorKeys.candleClosedChannel(candle.symbol()),
+        redisTemplate.convertAndSend(keyPrefix + CollectorKeys.candleClosedChannel(candle.symbol()),
                 objectMapper.writeValueAsString(payload));
     }
 
@@ -91,9 +99,10 @@ public class MarketRedisPublisher {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("symbol", trade.symbol());
         payload.put("price", trade.price());
+        payload.put("volume", trade.volume());
         payload.put("tradeTimestamp", trade.tradeTimestamp().toString());
         payload.put("updatedAt", now.toString());
-        redisTemplate.convertAndSend(CollectorKeys.tickChannel(trade.symbol()),
+        redisTemplate.convertAndSend(keyPrefix + CollectorKeys.tickChannel(trade.symbol()),
                 objectMapper.writeValueAsString(payload));
         lastTickAt.put(trade.symbol(), now);
         pendingTicks.remove(trade.symbol());

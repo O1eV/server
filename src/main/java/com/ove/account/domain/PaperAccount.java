@@ -1,6 +1,7 @@
 package com.ove.account.domain;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 
 import org.hibernate.annotations.CreationTimestamp;
@@ -31,6 +32,7 @@ import com.ove.user.domain.User;
 public class PaperAccount {
 
     public static final String DEFAULT_CURRENCY = "KRW";
+    private static final int BALANCE_SCALE = 8;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -40,8 +42,8 @@ public class PaperAccount {
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user;
 
-    // 코인 체결가가 소수점까지 내려올 수 있어 소수 둘째 자리까지 저장한다.
-    @Column(nullable = false, precision = 20, scale = 2)
+    // 소수 수량의 코인을 매수해도 잔고가 손실되지 않도록 8자리까지 저장한다.
+    @Column(nullable = false, precision = 24, scale = BALANCE_SCALE)
     private BigDecimal balance;
 
     @Column(nullable = false, length = 3)
@@ -54,7 +56,23 @@ public class PaperAccount {
     @Builder
     private PaperAccount(User user, BigDecimal balance, String currency) {
         this.user = user;
-        this.balance = balance;
+        this.balance = normalize(balance);
         this.currency = currency;
+    }
+
+    public void withdraw(BigDecimal amount) {
+        this.balance = normalize(balance.subtract(amount));
+    }
+
+    public void deposit(BigDecimal amount) {
+        this.balance = normalize(balance.add(amount));
+    }
+
+    public void reset(BigDecimal initialBalance) {
+        this.balance = normalize(initialBalance);
+    }
+
+    private static BigDecimal normalize(BigDecimal value) {
+        return value.setScale(BALANCE_SCALE, RoundingMode.HALF_UP);
     }
 }
