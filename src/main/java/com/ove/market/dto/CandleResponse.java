@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 import com.ove.market.client.UpbitCandleResponse;
+import com.ove.market.collector.MinuteCandle;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;
@@ -35,5 +36,15 @@ public class CandleResponse {
         this.low = candle.getLowPrice();
         this.close = candle.getTradePrice();
         this.volume = candle.getCandleAccTradeVolume();
+    }
+
+    // 저장된 1분봉(키움 수집분)으로 캔들 응답을 만들 때 사용
+    public CandleResponse(MinuteCandle candle) {
+        this.time = candle.time();
+        this.open = candle.open();
+        this.high = candle.high();
+        this.low = candle.low();
+        this.close = candle.close();
+        this.volume = candle.volume();
     }
 }
