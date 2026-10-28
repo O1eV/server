@@ -28,6 +28,7 @@ public enum ErrorCode {
     // 404
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
+    SIGNAL_NOT_FOUND(HttpStatus.NOT_FOUND, "신호 정보가 없습니다."),
     MARKET_NOT_FOUND(HttpStatus.NOT_FOUND, "종목을 찾을 수 없습니다."),
     PAPER_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "모의투자 계좌를 찾을 수 없습니다."),
     WATCHLIST_NOT_FOUND(HttpStatus.NOT_FOUND, "관심 종목에 없는 종목입니다."),

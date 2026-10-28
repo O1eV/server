@@ -79,6 +79,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, PUBLIC_POST_PATHS).permitAll()
                         .requestMatchers(HttpMethod.GET, PUBLIC_GET_PATHS).permitAll()
                         .requestMatchers(SWAGGER_PATHS).permitAll()
+                        .requestMatchers("/ws").permitAll()
                         // 컨테이너 에러 디스패치가 401로 덮이지 않도록 연다.
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())

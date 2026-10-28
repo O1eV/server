@@ -11,8 +11,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.ove.global.exception.BusinessException;
-import com.ove.global.exception.ErrorCode;
 import com.ove.global.response.ApiResponse;
 import com.ove.global.security.AuthUser;
 import com.ove.market.dto.CandleListResponse;
@@ -41,10 +39,8 @@ public class MarketController implements MarketControllerDocs {
             @RequestParam(required = false) String signal,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        if (signal != null && authUser == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED);
-        }
-        MarketListResponse response = marketService.getMarkets(assetClass, marketState, signal, page, size);
+        MarketListResponse response = marketService.getMarkets(assetClass, marketState, signal, page, size,
+                authUser != null);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK, SUCCESS_MESSAGE, response));
     }
 
