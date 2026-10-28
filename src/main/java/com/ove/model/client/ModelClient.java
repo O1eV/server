@@ -32,7 +32,9 @@ public class ModelClient {
     private final RestClient restClient;
 
     public ModelClient(ModelProperties properties) {
-        HttpClient httpClient = HttpClient.newBuilder().connectTimeout(properties.timeout()).build();
+        // 평문 HTTP에서 기본값(HTTP/2 시도)은 Upgrade: h2c 헤더를 붙여 uvicorn(h11)이 본문을 읽지 못한다. HTTP/1.1로 고정한다.
+        HttpClient httpClient = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(properties.timeout()).build();
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
         requestFactory.setReadTimeout(properties.timeout());
         RestClient.Builder builder = RestClient.builder().baseUrl(properties.baseUrl()).requestFactory(requestFactory);
