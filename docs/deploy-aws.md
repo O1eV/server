@@ -80,7 +80,7 @@ compose에 **고정**되어 `.env`로 바꿀 수 없는 값:
 ## GitHub Actions 배포 (`.github/workflows/deploy.yml`)
 
 - 트리거: `main` push(PR 머지) 또는 수동 실행(workflow_dispatch). 팀 규칙상 `main`이 배포 브랜치이고 직접 push는 금지다. 시연 전 임시 배포는 수동 실행으로 한다.
-- 동작: OIDC로 역할 가정 → ECR 로그인 → 이미지 빌드·push(태그 = 커밋 SHA) → SSM으로 EC2에서 compose 파일 갱신, `.env`의 `APP_IMAGE` 갱신, `pull` + `up -d`.
+- 동작: `./gradlew test` 통과 후(실패하면 배포하지 않는다) OIDC로 역할 가정 → ECR 로그인 → 이미지 빌드·push(태그 = 커밋 SHA) → SSM으로 EC2에서 compose 파일 갱신, `.env`의 `APP_IMAGE` 갱신, `pull` + `up -d`. SSM 결과는 최대 10분까지 폴링하고, 성공이 아니면 EC2의 표준출력·오류를 Actions 로그에 찍고 실패 처리한다.
 - 프론트 이미지(`FRONT_IMAGE`)는 이 워크플로가 바꾸지 않는다. 서버 `.env`의 값을 그대로 쓴다.
 
 필요한 이름(값은 저장소 설정에서 입력):
