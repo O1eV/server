@@ -1,0 +1,90 @@
+# 운영(EC2) 배포용. 로컬 개발용은 docker-compose.yml을 쓴다.
+# 사용: cp .env.example .env 로 값을 채운 뒤  docker compose -f docker-compose.prod.yml up -d
+# 외부에는 nginx의 80 포트만 연다(앞단 CloudFront가 HTTPS를 맡는다). DB·Redis·app은 내부 네트워크 전용이다.
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ove
+      POSTGRES_USER: ${DB_USERNAME:?DB_USERNAME을 .env에 설정하세요}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD를 .env에 설정하세요}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d ove"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # AOF를 켜서 재시작 뒤에도 refresh 토큰 등 데이터를 유지한다.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  app:
+    image: ${APP_IMAGE:?APP_IMAGE를 .env에 설정하세요}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # prod 프로필: 로컬 시연용 /api/demo/* 엔드포인트가 열리지 않는다.
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://db:5432/ove
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET을 .env에 설정하세요}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS를 .env에 설정하세요}
+      AUTH_COOKIE_SECURE: "true"
+      SWAGGER_UI_ENABLED: "false"
+      API_DOCS_ENABLED: "false"
+      # CloudFront 뒤에서 X-Forwarded-* 헤더를 신뢰해 https 스킴과 호스트를 인식한다.
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
+      COLLECTOR_ENABLED: ${COLLECTOR_ENABLED:-true}
+      COLLECTOR_SYMBOLS: ${COLLECTOR_SYMBOLS:-KRW-BTC,KRW-ETH,KRW-XRP}
+      # 키움 주식 수집기는 로컬 시연 전용이다. 운영에서는 값을 바꿀 수 없도록 고정한다.
+      KIWOOM_ENABLED: "false"
+      # AI 모델 서버(맥 로컬)를 터널로 호출한다. 꺼 두면 모델 호출 없이 동작한다.
+      MODEL_ENABLED: ${MODEL_ENABLED:-false}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      DDL_AUTO: ${DDL_AUTO:-update}
+    # 호스트에 열린 SSH 역터널(docker0 브릿지 주소)로 나가기 위한 매핑
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080'"]
+      interval: 15s
+      timeout: 3s
+      retries: 10
+      start_period: 60s
+
+  nginx:
+    # 프론트 저장소(font)에서 따로 빌드·푸시한 이미지. 정적 파일 + /api, /ws 프록시가 들어 있다.
+    image: ${FRONT_IMAGE:?FRONT_IMAGE를 .env에 설정하세요}
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      BACKEND_HOST: app
+      BACKEND_PORT: "8080"
+    ports:
+      - "80:80"
+
+volumes:
+  db-data:
+  redis-data:
