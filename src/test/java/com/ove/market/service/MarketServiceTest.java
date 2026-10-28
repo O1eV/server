@@ -265,6 +265,59 @@ class MarketServiceTest {
         assertThat(response.getTotalElements()).isZero();
     }
 
+    @Test
+    @DisplayName("필터 값은 앞뒤 공백과 대소문자를 무시한다")
+    void filtersAreNormalized() {
+        stubMarkets();
+        given(signalService.latestSummaries(anyList())).willReturn(Map.of(
+                "KRW-BTC", new SignalSummary("BUY", new BigDecimal("0.71")),
+                "KRW-ETH", new SignalSummary("HOLD", new BigDecimal("0.55")),
+                "KRW-XRP", new SignalSummary("HOLD", new BigDecimal("0.51"))));
+
+        MarketListResponse response = marketService.getMarkets(" coin ", " up ", " buy ", 0, 20, true);
+
+        assertThat(response.getItems()).extracting(MarketResponse::getSymbol).containsExactly("KRW-BTC");
+        assertThat(response.getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("정해진 값이 아닌 필터는 업비트를 부르기 전에 INVALID_REQUEST")
+    void invalidFilter() {
+        assertInvalidRequest(() -> marketService.getMarkets("STOCK", null, null, 0, 20, false));
+        assertInvalidRequest(() -> marketService.getMarkets(null, "RISE", null, 0, 20, false));
+        assertInvalidRequest(() -> marketService.getMarkets(null, null, "MAYBE", 0, 20, true));
+        // 공백만 있는 값은 정규화하면 빈 문자열이라 유효하지 않다.
+        assertInvalidRequest(() -> marketService.getMarkets("   ", null, null, 0, 20, false));
+        verifyNoInteractions(upbitClient);
+        verifyNoInteractions(signalService);
+    }
+
+    @Test
+    @DisplayName("업비트 현재가에 변동률이나 현재가가 없으면 500이 아니라 UPSTREAM_UNAVAILABLE")
+    void incompleteTickerIsUpstreamUnavailable() {
+        given(upbitClient.getMarkets()).willReturn(List.of(
+                UpbitMarketResponse.builder().market("KRW-BTC").koreanName("비트코인").englishName("Bitcoin").build()));
+        given(upbitClient.getTickers(anyList())).willReturn(List.of(
+                UpbitTickerResponse.builder()
+                        .market("KRW-BTC")
+                        .tradePrice(new BigDecimal("1000"))
+                        .build()));
+
+        assertThatThrownBy(() -> marketService.getMarkets(null, null, null, 0, 20, false))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UPSTREAM_UNAVAILABLE));
+
+        given(upbitClient.getTickers(anyList())).willReturn(List.of(
+                UpbitTickerResponse.builder()
+                        .market("KRW-BTC")
+                        .signedChangeRate(new BigDecimal("0.01"))
+                        .build()));
+
+        assertThatThrownBy(() -> marketService.getMarkets(null, null, null, 0, 20, false))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.UPSTREAM_UNAVAILABLE));
+    }
+
     private void assertInvalidRequest(Runnable call) {
         assertThatThrownBy(call::run)
                 .isInstanceOf(BusinessException.class)

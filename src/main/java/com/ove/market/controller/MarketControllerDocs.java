@@ -30,8 +30,9 @@ public interface MarketControllerDocs {
             - 로그인한 회원에게는 각 종목의 최신 `signal`·`confidence`를 합쳐서 돌려줍니다. 신호가 없으면 null입니다.
             - 비로그인 응답의 `signal`·`confidence`는 항상 null입니다.
             - `signal` 필터는 로그인한 회원만 쓸 수 있고, 최신 신호가 필터 값과 같은 종목만 남깁니다(비로그인이면 `UNAUTHORIZED`).
+            - 필터 값은 앞뒤 공백을 무시하고 대소문자를 구분하지 않습니다(예: ` coin ` = `COIN`).
             - 필터를 모두 적용한 뒤 `page`·`size`로 자릅니다.
-            - 현재가는 업비트에서 가져오며 최대 1.5초 전 값일 수 있습니다. 업비트가 응답하지 않으면 `UPSTREAM_UNAVAILABLE`(502)입니다.
+            - 현재가는 업비트에서 가져오며 최대 1.5초 전 값일 수 있습니다. 업비트가 응답하지 않거나 현재가·변동률이 빠져 있으면 `UPSTREAM_UNAVAILABLE`(502)입니다.
             """)
     @ApiOptionalAuth
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조건에 맞는 종목 한 페이지와 페이지 정보")
