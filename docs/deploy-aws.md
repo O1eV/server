@@ -36,13 +36,12 @@
 | `MODEL_ENABLED`, `MODEL_BASE_URL`, `MODEL_API_KEY` | AI 연동(#56, dev 머지 전에는 값이 있어도 무시된다). |
 | `DDL_AUTO` | 현재 마이그레이션 도구(Flyway)가 없어 `update`로 스키마를 맞춘다. Flyway 도입 시 `validate`로 바꾸고 이 문서를 갱신한다. |
 
-compose에 **고정**되어 `.env`로 바꿀 수 없는 값:
+compose에 **고정**되어 `.env`로 바꿀 수 없는 값과 기본값:
 
 - `AUTH_COOKIE_SECURE=true`
 - `SWAGGER_UI_ENABLED=false`, `API_DOCS_ENABLED=false`
 - `SERVER_FORWARD_HEADERS_STRATEGY=framework` (`server.forward-headers-strategy`, CloudFront·nginx 뒤에서 https 스킴 인식)
-- `SPRING_PROFILES_ACTIVE=prod` (로컬 시연용 `/api/demo/*`가 열리지 않는다)
-- **`KIWOOM_ENABLED=false` : 키움 주식 수집기는 로컬 시연 전용이라 운영에서 절대 켜지 않는다.** 키움 App Key/Secret도 EC2에 두지 않는다.
+- 아래 두 값은 `.env`로 바꿀 수 있지만 기본이 안전한 값이다: `SPRING_PROFILES_ACTIVE=prod`, `KIWOOM_ENABLED=false`. 키움을 켜는 절차는 "발표용 키움 켜기/끄기"를 따른다.
 
 ## AI 서버 터널 (맥 → EC2)
 
@@ -92,6 +91,40 @@ compose에 **고정**되어 `.env`로 바꿀 수 없는 값:
 | Variable | `ECR_APP_REPOSITORY` | 백엔드 ECR 저장소 이름 |
 | Variable | `EC2_INSTANCE_ID` | 배포 대상 인스턴스 ID |
 | Variable | `EC2_DEPLOY_DIR` | EC2의 배포 폴더(`.env`와 compose 위치) |
+
+## 발표용 키움 켜기/끄기
+
+기본 배포는 키움을 쓰지 않는다. 발표 기간에만 서버 `.env`로 명시적으로 켠다. 코드의 prod 차단(키움 수집기 기동 거부, `/api/demo/*`는 prod에서 등록 안 됨)은 그대로이고, 프로필을 prod가 아닌 값으로 바꾸는 것으로만 풀린다.
+
+> **주의**: 키움 약관상 시세의 제3자 제공이 금지되어 있다(리스크는 사용자가 인지하고 감수하기로 했다). 키는 서버 `.env`에만 두고 Git·채팅·문서·로그에 넣지 않는다. 발표가 끝나면 반드시 끈다.
+
+**#34 체크리스트와 달라지는 점**
+- 키움 App Key/Secret이 서버(`.env`, `chmod 600`)에 놓인다. 기본 배포에서는 서버에 키움 키가 없다.
+- 프로필이 prod가 아니게 되어 `/api/demo/stocks/{code}/price`, `/api/demo/stocks/{code}/candles`가 **로그인 없이 공개**된다.
+- Swagger UI·API 문서는 compose에 고정되어 계속 꺼져 있다(`SWAGGER_UI_ENABLED=false`, `API_DOCS_ENABLED=false`).
+
+**켜기**
+1. 키움 쪽에 허용 IP 설정이 있으면 EC2 고정 IP `13.125.121.91`을 등록한다.
+2. EC2에서 `.env`를 편집한다(`chmod 600 .env` 확인).
+   ```
+   SPRING_PROFILES_ACTIVE=demo
+   KIWOOM_ENABLED=true
+   KIWOOM_APP_KEY=<직접 입력>
+   KIWOOM_APP_SECRET=<직접 입력>
+   KIWOOM_SYMBOLS=005930
+   ```
+3. `docker compose -f docker-compose.prod.yml up -d app`
+
+**확인**
+- `curl -s https://<CloudFront>/api/demo/stocks/005930/price` 에 시세가 오면 정상이다.
+- 장중(평일 09:00~15:30)에만 데이터가 나온다. 장 밖에는 `COLLECTOR_UNAVAILABLE`(503)이거나 비어 있을 수 있다.
+- 실패하면 `docker compose -f docker-compose.prod.yml logs app`을 본다(키 값은 로그에 나오지 않는다).
+
+**끄기 (발표 직후 반드시)**
+1. `.env`에서 `KIWOOM_APP_KEY`, `KIWOOM_APP_SECRET` 줄을 지우고 `KIWOOM_ENABLED=false`, `SPRING_PROFILES_ACTIVE=prod`로 되돌린다(또는 해당 줄을 모두 삭제하면 기본값이 prod/false다).
+2. `docker compose -f docker-compose.prod.yml up -d app`
+3. `/api/demo/stocks/005930/price`가 더 이상 시세를 돌려주지 않는지 확인한다.
+4. 키움 쪽에서 키 폐기·재발급이 필요한지 판단한다.
 
 ## 배포 후 확인
 
