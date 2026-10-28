@@ -39,8 +39,9 @@ services:
       redis:
         condition: service_healthy
     environment:
-      # prod 프로필: 로컬 시연용 /api/demo/* 엔드포인트가 열리지 않는다.
-      SPRING_PROFILES_ACTIVE: prod
+      # 기본 prod: 키움 수집기가 기동을 거부하고 /api/demo/* 엔드포인트가 열리지 않는다.
+      # 발표 때만 서버 .env에서 prod가 아닌 값(예: demo)으로 명시적으로 바꾼다. docs/deploy-aws.md 참고.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       DB_URL: jdbc:postgresql://db:5432/ove
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -55,8 +56,12 @@ services:
       SERVER_FORWARD_HEADERS_STRATEGY: framework
       COLLECTOR_ENABLED: ${COLLECTOR_ENABLED:-true}
       COLLECTOR_SYMBOLS: ${COLLECTOR_SYMBOLS:-KRW-BTC,KRW-ETH,KRW-XRP}
-      # 키움 주식 수집기는 로컬 시연 전용이다. 운영에서는 값을 바꿀 수 없도록 고정한다.
-      KIWOOM_ENABLED: "false"
+      # 키움 주식 수집기: 기본 꺼짐. 발표 기간에만 서버 .env로 명시적으로 켠다(약관상 제3자 제공 금지).
+      # 키·시크릿은 서버 .env에만 둔다. 비어 있으면 빈 값으로 전달된다.
+      KIWOOM_ENABLED: ${KIWOOM_ENABLED:-false}
+      KIWOOM_APP_KEY: ${KIWOOM_APP_KEY:-}
+      KIWOOM_APP_SECRET: ${KIWOOM_APP_SECRET:-}
+      KIWOOM_SYMBOLS: ${KIWOOM_SYMBOLS:-005930}
       # AI 모델 서버(맥 로컬)를 터널로 호출한다. 꺼 두면 모델 호출 없이 동작한다.
       MODEL_ENABLED: ${MODEL_ENABLED:-false}
       MODEL_BASE_URL: ${MODEL_BASE_URL:-}
