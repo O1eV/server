@@ -65,7 +65,10 @@ public class SignalGenerationService {
         }
         String label = decision.decision() == null ? "" : decision.decision().trim().toUpperCase(java.util.Locale.ROOT);
         double sum = decision.buy() + decision.hold() + decision.sell();
-        if (!LABELS.contains(label) || !(sum > 0) || !Double.isFinite(sum)) {
+        // NaN·무한대·음수 확률은 BigDecimal 변환 예외나 합 1 초과로 이어지므로 모델 실패와 같은 경로로 보낸다.
+        if (!LABELS.contains(label) || !isValidProbability(decision.buy()) || !isValidProbability(decision.hold())
+                || !isValidProbability(decision.sell()) || !(sum > 0) || !Double.isFinite(sum)
+                || !Double.isFinite(decision.confidence())) {
             log.warn("모델 응답이 올바르지 않습니다: symbol={}", symbol);
             publishStale(symbol, latest);
             return;
@@ -82,8 +85,12 @@ public class SignalGenerationService {
         publisher.publishSignalChange(symbol, previous, label, probabilities, confidence, false);
     }
 
+    private boolean isValidProbability(double value) {
+        return Double.isFinite(value) && value >= 0;
+    }
+
     private BigDecimal normalize(double value, double sum) {
-        return BigDecimal.valueOf(Math.max(0.0, value) / sum).setScale(SCALE, RoundingMode.HALF_UP);
+        return BigDecimal.valueOf(value / sum).setScale(SCALE, RoundingMode.HALF_UP);
     }
 
     private void publishStale(String symbol, Signal latest) {

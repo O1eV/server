@@ -168,6 +168,26 @@ class SignalGenerationServiceTest {
         verify(publisher, never()).publishSignalChange(any(), any(), any(), any(), any(), anyBoolean());
     }
 
+    @Test
+    @DisplayName("NaN·무한대 confidence나 확률, 음수 확률 응답은 예외 없이 stale 처리")
+    void nonFiniteOrNegativeValuesAreStale() {
+        candles(15);
+        latest("BUY");
+        given(modelClient.predict(any())).willReturn(
+                new ModelDecision("BUY", 0.5, 0.3, 0.2, Double.NaN),
+                new ModelDecision("BUY", 0.5, 0.3, 0.2, Double.POSITIVE_INFINITY),
+                new ModelDecision("BUY", Double.NaN, 0.3, 0.2, 0.5),
+                new ModelDecision("BUY", 0.9, -0.3, 0.4, 0.5),
+                new ModelDecision("BUY", 0.5, 0.3, Double.POSITIVE_INFINITY, 0.5));
+
+        for (int i = 0; i < 5; i++) {
+            service.generate("KRW-BTC", T);
+        }
+
+        verify(publisher, org.mockito.Mockito.times(5)).publishStaleSignal(eq("KRW-BTC"), eq("BUY"), any());
+        verify(publisher, never()).publishSignalChange(any(), any(), any(), any(), any(), anyBoolean());
+    }
+
     private static boolean anyBoolean() {
         return org.mockito.ArgumentMatchers.anyBoolean();
     }
