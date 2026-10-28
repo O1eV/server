@@ -1,4 +1,4 @@
-package com.ove.paper.dto;
+package com.ove.paper.dto.request;
 
 import java.math.BigDecimal;
 
@@ -24,8 +24,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class PaperOrderRequest {
 
+    // 앞뒤 공백은 서비스에서 제거하므로 검증 단계에서도 허용한다.
     @NotBlank
-    @Pattern(regexp = "^[A-Za-z]{2,10}-[A-Za-z0-9]{2,20}$",
+    @Pattern(regexp = "^\\s*[A-Za-z]{2,10}-[A-Za-z0-9]{2,20}\\s*$",
             message = "symbol은 KRW-BTC 형식이어야 합니다.")
     private String symbol;
 

@@ -36,10 +36,10 @@ import com.ove.market.service.MarketPriceProvider;
 import com.ove.paper.domain.OrderSide;
 import com.ove.paper.domain.PaperHolding;
 import com.ove.paper.domain.PaperOrder;
-import com.ove.paper.dto.PaperOrderHistoryResponse;
-import com.ove.paper.dto.PaperOrderRequest;
-import com.ove.paper.dto.PaperOrderResponse;
-import com.ove.paper.dto.PaperPortfolioResponse;
+import com.ove.paper.dto.response.PaperOrderHistoryResponse;
+import com.ove.paper.dto.request.PaperOrderRequest;
+import com.ove.paper.dto.response.PaperOrderResponse;
+import com.ove.paper.dto.response.PaperPortfolioResponse;
 import com.ove.paper.repository.PaperHoldingRepository;
 import com.ove.paper.repository.PaperOrderRepository;
 
@@ -85,7 +85,8 @@ class PaperTradingServiceTest {
                 .willReturn(Optional.empty());
         given(paperOrderRepository.save(any(PaperOrder.class))).willAnswer(invocation -> savedOrder(invocation.getArgument(0)));
 
-        PaperOrderResponse response = paperTradingService.placeOrder(USER_ID, order("krw-btc", OrderSide.BUY, "2"));
+        PaperOrderResponse response = paperTradingService.placeOrder(USER_ID,
+                order(" krw-btc ", OrderSide.BUY, "2"));
 
         assertThat(response.getSymbol()).isEqualTo("KRW-BTC");
         assertThat(response.getAmount()).isEqualByComparingTo("2000");
@@ -144,6 +145,34 @@ class PaperTradingServiceTest {
                 order("KRW-BTC", OrderSide.SELL, "1")))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.INSUFFICIENT_HOLDING);
+    }
+
+    @Test
+    void 음수_수량은_원장을_바꾸지_않고_INVALID_REQUEST로_거절한다() {
+        given(marketPriceProvider.getLatestPrice("KRW-BTC")).willReturn(new BigDecimal("1000"));
+
+        assertThatThrownBy(() -> paperTradingService.placeOrder(USER_ID,
+                order("KRW-BTC", OrderSide.BUY, "-1")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+
+        then(paperAccountRepository).shouldHaveNoInteractions();
+        then(paperHoldingRepository).shouldHaveNoInteractions();
+        then(paperOrderRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 시세가_0이면_원장을_바꾸지_않고_MARKET_PRICE_UNAVAILABLE로_거절한다() {
+        given(marketPriceProvider.getLatestPrice("KRW-BTC")).willReturn(BigDecimal.ZERO);
+
+        assertThatThrownBy(() -> paperTradingService.placeOrder(USER_ID,
+                order("KRW-BTC", OrderSide.BUY, "1")))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MARKET_PRICE_UNAVAILABLE));
+
+        then(paperAccountRepository).shouldHaveNoInteractions();
+        then(paperHoldingRepository).shouldHaveNoInteractions();
+        then(paperOrderRepository).shouldHaveNoInteractions();
     }
 
     @Test
@@ -230,7 +259,7 @@ class PaperTradingServiceTest {
         given(paperOrderRepository.findAllByPaperAccountUserIdAndSymbol(eq(USER_ID), eq("KRW-BTC"), any(PageRequest.class)))
                 .willReturn(new PageImpl<>(List.of(savedOrder), PageRequest.of(1, 10), 11));
 
-        PaperOrderHistoryResponse response = paperTradingService.getOrders(USER_ID, "krw-btc", 1, 10);
+        PaperOrderHistoryResponse response = paperTradingService.getOrders(USER_ID, " krw-btc ", 1, 10);
 
         assertThat(response.getOrders()).hasSize(1);
         assertThat(response.getPageInfo().getPage()).isEqualTo(1);

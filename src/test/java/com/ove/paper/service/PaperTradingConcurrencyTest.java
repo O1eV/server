@@ -26,7 +26,7 @@ import com.ove.market.service.MarketPriceProvider;
 import com.ove.paper.domain.OrderSide;
 import com.ove.paper.domain.PaperHolding;
 import com.ove.paper.domain.PaperOrder;
-import com.ove.paper.dto.PaperOrderRequest;
+import com.ove.paper.dto.request.PaperOrderRequest;
 import com.ove.support.IntegrationTestSupport;
 import com.ove.user.domain.User;
 

@@ -11,10 +11,10 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import com.ove.market.service.MarketPriceProvider;
-import com.ove.paper.dto.PaperOrderHistoryResponse;
-import com.ove.paper.dto.PaperOrderRequest;
-import com.ove.paper.dto.PaperOrderResponse;
-import com.ove.paper.dto.PaperPortfolioResponse;
+import com.ove.paper.dto.response.PaperOrderHistoryResponse;
+import com.ove.paper.dto.request.PaperOrderRequest;
+import com.ove.paper.dto.response.PaperOrderResponse;
+import com.ove.paper.dto.response.PaperPortfolioResponse;
 import com.ove.paper.repository.PaperOrderRepository;
 
 /**
