@@ -1,7 +1,12 @@
 package com.ove.market.collector;
 
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -64,6 +69,30 @@ public class CandleRepository {
      */
     public boolean insertIfAbsent(MinuteCandle candle) {
         return write(INSERT_IF_ABSENT_SQL, candle) == 1;
+    }
+
+    /**
+     * 저장된 1분봉을 조회한다(읽기 전용). to 이전(to는 포함하지 않음)부터 과거로 limit개를 가져오고,
+     * from이 있으면 from 이후(from 포함)만 남긴다. 결과는 시간 오름차순이다.
+     */
+    public List<MinuteCandle> findMinuteCandles(String symbol, Instant from, Instant to, int limit) {
+        StringBuilder sql = new StringBuilder("SELECT symbol, time, open, high, low, close, volume FROM candles "
+                + "WHERE symbol = ? AND time < ?");
+        List<Object> args = new ArrayList<>(List.of(symbol, OffsetDateTime.ofInstant(to, ZoneOffset.UTC)));
+        if (from != null) {
+            sql.append(" AND time >= ?");
+            args.add(OffsetDateTime.ofInstant(from, ZoneOffset.UTC));
+        }
+        sql.append(" ORDER BY time DESC LIMIT ?");
+        args.add(limit);
+        List<MinuteCandle> candles = jdbcTemplate.query(sql.toString(),
+                (rs, rowNum) -> new MinuteCandle(rs.getString("symbol"),
+                        rs.getObject("time", OffsetDateTime.class).toInstant(), rs.getBigDecimal("open"),
+                        rs.getBigDecimal("high"), rs.getBigDecimal("low"), rs.getBigDecimal("close"),
+                        rs.getBigDecimal("volume")),
+                args.toArray());
+        Collections.reverse(candles);
+        return candles;
     }
 
     private int write(String sql, MinuteCandle candle) {

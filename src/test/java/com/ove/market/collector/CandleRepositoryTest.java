@@ -136,4 +136,26 @@ class CandleRepositoryTest {
         return new MinuteCandle(symbol, time, new BigDecimal(open), new BigDecimal(high), new BigDecimal(low),
                 new BigDecimal(close), new BigDecimal(volume));
     }
+
+    @Test
+    @DisplayName("findMinuteCandles: 종목별로 to 이전 최근 limit개를 from 이후만 시간 오름차순으로 읽는다")
+    void findsMinuteCandles() {
+        repository.initSchema();
+        for (int i = 0; i < 4; i++) {
+            repository.upsert(new MinuteCandle("005930", M0.plusSeconds(60L * i), BigDecimal.TEN, BigDecimal.TEN,
+                    BigDecimal.TEN, BigDecimal.valueOf(i), BigDecimal.ONE));
+        }
+        repository.upsert(new MinuteCandle("KRW-BTC", M0, BigDecimal.TEN, BigDecimal.TEN, BigDecimal.TEN,
+                BigDecimal.TEN, BigDecimal.ONE));
+
+        // to(M0+3분) 미포함 → 0,1,2분 봉 중 최근 2개 = 1,2분
+        List<MinuteCandle> latestTwo = repository.findMinuteCandles("005930", null, M0.plusSeconds(180), 2);
+        assertThat(latestTwo).extracting(MinuteCandle::time).containsExactly(M0.plusSeconds(60), M0.plusSeconds(120));
+
+        // from 포함
+        List<MinuteCandle> fromOne = repository.findMinuteCandles("005930", M0.plusSeconds(60), M0.plusSeconds(600), 10);
+        assertThat(fromOne).extracting(MinuteCandle::time)
+                .containsExactly(M0.plusSeconds(60), M0.plusSeconds(120), M0.plusSeconds(180));
+        assertThat(repository.findMinuteCandles("000660", null, M0.plusSeconds(600), 10)).isEmpty();
+    }
 }
