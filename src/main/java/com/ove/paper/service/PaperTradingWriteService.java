@@ -17,8 +17,8 @@ import com.ove.global.exception.ErrorCode;
 import com.ove.paper.domain.OrderSide;
 import com.ove.paper.domain.PaperHolding;
 import com.ove.paper.domain.PaperOrder;
-import com.ove.paper.dto.PaperOrderResponse;
-import com.ove.paper.dto.PaperPortfolioResponse;
+import com.ove.paper.dto.response.PaperOrderResponse;
+import com.ove.paper.dto.response.PaperPortfolioResponse;
 import com.ove.paper.repository.PaperHoldingRepository;
 import com.ove.paper.repository.PaperOrderRepository;
 
@@ -57,6 +57,14 @@ public class PaperTradingWriteService {
     @Transactional
     public PaperOrderResponse placeOrder(UUID userId, String symbol, OrderSide side, BigDecimal quantity,
                                          BigDecimal price) {
+        // 컨트롤러 검증을 거치지 않고 서비스를 직접 호출해도 음수 수량으로 원장이 뒤집히지 않게 막는다.
+        if (quantity == null || quantity.signum() <= 0) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
+        // 시세 제공자가 비정상 가격을 돌려주면 클라이언트 요청 문제가 아니라 시세 조회 실패로 응답한다.
+        if (price == null || price.signum() <= 0) {
+            throw new BusinessException(ErrorCode.MARKET_PRICE_UNAVAILABLE);
+        }
         BigDecimal normalizedQuantity = quantity.setScale(QUANTITY_SCALE, RoundingMode.HALF_UP);
         BigDecimal normalizedPrice = price.setScale(PRICE_SCALE, RoundingMode.HALF_UP);
         BigDecimal amount = normalizedPrice.multiply(normalizedQuantity).setScale(AMOUNT_SCALE, RoundingMode.HALF_UP);

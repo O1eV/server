@@ -76,6 +76,16 @@ collector:
     # KIWOOM_MINUTE_BAR_LABEL=START 또는 END를 주고 KIWOOM_BACKFILL_ENABLED=true로 켠다.
     backfill-enabled: ${KIWOOM_BACKFILL_ENABLED:false}
     minute-bar-label: ${KIWOOM_MINUTE_BAR_LABEL:}
+model:
+  # AI 모델 서버(/api/v1/predict) 연동. 코인 1분봉이 마감될 때마다 호출해 신호를 만든다.
+  # collector.enabled=true와 함께 켜야 동작한다. 기본은 꺼짐(키·서버가 없어도 기존 동작 그대로).
+  enabled: ${MODEL_ENABLED:false}
+  base-url: ${MODEL_BASE_URL:}
+  # 키는 환경변수로만 준다(이 파일에 값을 적지 않는다)
+  api-key: ${MODEL_API_KEY:}
+  timeout: 500ms
+  # 모델에 보낼 최근 1분봉 개수(최소 15)
+  candle-count: 30
 springdoc:
   # Swagger UI(/swagger-ui.html)와 OpenAPI 문서(/v3/api-docs) 노출 여부. 기본은 둘 다 켜짐(로컬 개발용).
   # 주의: 배포(외부 공개) 환경에서는 환경변수 SWAGGER_UI_ENABLED=false, API_DOCS_ENABLED=false가 필수다.

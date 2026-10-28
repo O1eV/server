@@ -6,10 +6,10 @@ import com.ove.global.docs.ApiErrorCodes;
 import com.ove.global.exception.ErrorCode;
 import com.ove.global.response.ApiResponse;
 import com.ove.global.security.AuthUser;
-import com.ove.paper.dto.PaperOrderHistoryResponse;
-import com.ove.paper.dto.PaperOrderRequest;
-import com.ove.paper.dto.PaperOrderResponse;
-import com.ove.paper.dto.PaperPortfolioResponse;
+import com.ove.paper.dto.response.PaperOrderHistoryResponse;
+import com.ove.paper.dto.request.PaperOrderRequest;
+import com.ove.paper.dto.response.PaperOrderResponse;
+import com.ove.paper.dto.response.PaperPortfolioResponse;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;

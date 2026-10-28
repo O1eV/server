@@ -49,14 +49,19 @@ public class MarketService {
     // 자산군·시장 상태·신호 필터에 맞는 종목을 페이지 단위로 조회할 때 사용
     public MarketListResponse getMarkets(String assetClass, String marketState, String signal,
                                          int page, int size, boolean authenticated) {
+        // 필터 값의 앞뒤 공백과 대소문자는 무시한다. (예: " coin " -> "COIN")
+        String normalizedAssetClass = normalizeFilter(assetClass);
+        String normalizedMarketState = normalizeFilter(marketState);
+        String normalizedSignal = normalizeFilter(signal);
+
         // signal 필터는 최신 신호를 합칠 수 있는 로그인 사용자만 쓸 수 있다.
         // 필터 값 검증보다 먼저 확인해, 비로그인 요청은 401로 응답한다.
-        if (signal != null && !authenticated) {
+        if (normalizedSignal != null && !authenticated) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
         }
-        checkFilter(assetClass, ASSET_CLASSES);
-        checkFilter(marketState, MARKET_STATES);
-        checkFilter(signal, SIGNALS);
+        checkFilter(normalizedAssetClass, ASSET_CLASSES);
+        checkFilter(normalizedMarketState, MARKET_STATES);
+        checkFilter(normalizedSignal, SIGNALS);
         if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST,
                     "page는 0 이상, size는 1~" + MAX_PAGE_SIZE + " 사이여야 합니다.");
@@ -74,12 +79,17 @@ public class MarketService {
             if (ticker == null) {
                 continue;
             }
+            // 업비트 응답에 현재가나 전일 대비 변동률이 빠져 있으면 종목 한 줄을 만들 수 없다.
+            // 500(NPE) 대신 문서에 약속한 502로 응답한다.
+            if (ticker.getTradePrice() == null || ticker.getSignedChangeRate() == null) {
+                throw new BusinessException(ErrorCode.UPSTREAM_UNAVAILABLE);
+            }
 
             MarketResponse response = new MarketResponse(market, ticker,
                     latestSignals.get(market.getMarket()));
-            if (matches(assetClass, response.getAssetClass())
-                    && matches(marketState, response.getMarketState())
-                    && matches(signal, response.getSignal())) {
+            if (matches(normalizedAssetClass, response.getAssetClass())
+                    && matches(normalizedMarketState, response.getMarketState())
+                    && matches(normalizedSignal, response.getSignal())) {
                 result.add(response);
             }
         }
@@ -195,11 +205,16 @@ public class MarketService {
     // 현재가 목록에서 종목 코드로 현재가를 찾을 때 사용
     private UpbitTickerResponse findTicker(List<UpbitTickerResponse> tickers, String symbol) {
         for (UpbitTickerResponse ticker : tickers) {
-            if (ticker.getMarket().equals(symbol)) {
+            if (ticker != null && symbol.equals(ticker.getMarket())) {
                 return ticker;
             }
         }
         return null;
+    }
+
+    // 필터 값의 앞뒤 공백을 없애고 대소문자를 구분하지 않게 맞출 때 사용
+    private String normalizeFilter(String value) {
+        return value == null ? null : value.trim().toUpperCase(Locale.ROOT);
     }
 
     // 필터 값이 정해진 값 중 하나인지 확인할 때 사용

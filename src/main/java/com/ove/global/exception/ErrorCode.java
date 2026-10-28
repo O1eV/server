@@ -51,6 +51,7 @@ public enum ErrorCode {
 
     // 503
     MARKET_PRICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "현재 시세를 조회할 수 없습니다."),
+    MODEL_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI 모델 서버가 응답하지 않습니다. 마지막 신호를 유지합니다."),
     COLLECTOR_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "실시간 시세 수집이 중지되었거나 아직 시세를 받지 못했습니다.");
 
     private final HttpStatus status;

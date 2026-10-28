@@ -117,6 +117,31 @@ class MarketControllerTest {
     }
 
     @Test
+    @DisplayName("종목 목록: 필터 값의 앞뒤 공백과 대소문자는 무시한다")
+    void getMarketsWithNormalizedFilter() throws Exception {
+        mockMvc.perform(get("/api/markets")
+                        .param("assetClass", " coin ")
+                        .param("marketState", " down "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items", hasSize(1)))
+                .andExpect(jsonPath("$.data.items[0].symbol").value("KRW-ETH"));
+    }
+
+    @Test
+    @DisplayName("종목 목록: signal 필터 값의 앞뒤 공백과 대소문자도 무시한다")
+    void getMarketsWithNormalizedSignalFilter() throws Exception {
+        signalRepository.save(signal("KRW-BTC", "BUY", "0.71", Instant.now()));
+
+        String accessToken = jwtProvider.createAccessToken(UUID.randomUUID()).token();
+        mockMvc.perform(get("/api/markets").param("signal", " buy ")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items", hasSize(1)))
+                .andExpect(jsonPath("$.data.items[0].symbol").value("KRW-BTC"))
+                .andExpect(jsonPath("$.data.totalElements").value(1));
+    }
+
+    @Test
     @DisplayName("종목 목록: 정해진 값이 아닌 필터는 400 에러")
     void getMarketsWithInvalidFilter() throws Exception {
         mockMvc.perform(get("/api/markets").param("marketState", "RISE"))
@@ -212,6 +237,25 @@ class MarketControllerTest {
         assertThat(ticker("KRW-BTC", "-0.02").getMarketState()).isEqualTo("DOWN");
         assertThat(ticker("KRW-BTC", "0.005").getMarketState()).isEqualTo("SIDEWAYS");
         assertThat(ticker("KRW-BTC", "-0.08").getMarketState()).isEqualTo("VOLATILE");
+        assertThat(UpbitTickerResponse.builder()
+                .market("KRW-BTC")
+                .tradePrice(new BigDecimal("1000"))
+                .build()
+                .getMarketState()).isNull();
+    }
+
+    @Test
+    @DisplayName("종목 목록: 업비트 현재가에 변동률이 없으면 500이 아니라 502")
+    void getMarketsWithIncompleteTicker() throws Exception {
+        given(upbitClient.getTickers(anyList())).willReturn(List.of(
+                UpbitTickerResponse.builder()
+                        .market("KRW-BTC")
+                        .tradePrice(new BigDecimal("1000"))
+                        .build()));
+
+        mockMvc.perform(get("/api/markets"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.error").value("UPSTREAM_UNAVAILABLE"));
     }
 
     @Test
