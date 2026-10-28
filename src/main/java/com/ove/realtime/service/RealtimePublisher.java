@@ -45,9 +45,19 @@ public class RealtimePublisher {
         }
         messagingTemplate.convertAndSend("/topic/signals/" + symbol, new SignalMessage(symbol, from, to, probabilities, confidence, stale, now));
 
+        // 이전 신호가 없는 첫 신호나 같은 신호가 이어지는 경우는 "신호 변경"이 아니라서 알림을 보내지 않는다.
+        if (from == null) {
+            return;
+        }
         AlertMessage alert = new AlertMessage(symbol, from, to, confidence, now);
         for (UUID userId : watchlistRepository.findUserIdsBySymbol(symbol)) {
             messagingTemplate.convertAndSendToUser(userId.toString(), "/queue/alerts", alert);
         }
+    }
+
+    // 모델 호출이 실패해 마지막 신호를 그대로 보여 줄 때 사용: stale=true로 /topic/signals/{symbol}에만 보낸다(저장·알림 없음).
+    public void publishStaleSignal(String symbol, String signal, BigDecimal confidence) {
+        messagingTemplate.convertAndSend("/topic/signals/" + symbol,
+                new SignalMessage(symbol, signal, confidence, true, Instant.now()));
     }
 }
