@@ -8,7 +8,6 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willAnswer;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
@@ -26,7 +25,7 @@ import com.ove.auth.repository.TokenRedisRepository;
 import com.ove.market.service.MarketPriceProvider;
 import com.ove.paper.domain.OrderSide;
 import com.ove.paper.domain.PaperHolding;
-import com.ove.paper.dto.PaperOrderRequest;
+import com.ove.paper.dto.request.PaperOrderRequest;
 import com.ove.paper.repository.PaperHoldingRepository;
 import com.ove.paper.repository.PaperOrderRepository;
 import com.ove.user.domain.User;

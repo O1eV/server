@@ -32,7 +32,7 @@ import com.ove.account.domain.PaperAccount;
 import com.ove.global.exception.BusinessException;
 import com.ove.market.service.MarketPriceProvider;
 import com.ove.paper.domain.OrderSide;
-import com.ove.paper.dto.PaperOrderRequest;
+import com.ove.paper.dto.request.PaperOrderRequest;
 import com.ove.paper.service.PaperTradingService;
 import com.ove.support.IntegrationTestSupport;
 

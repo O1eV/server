@@ -1,4 +1,4 @@
-package com.ove.paper.dto;
+package com.ove.paper.dto.response;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
