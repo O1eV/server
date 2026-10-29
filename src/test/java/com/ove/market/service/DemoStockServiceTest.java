@@ -56,6 +56,19 @@ class DemoStockServiceTest {
     }
 
     @Test
+    void readsSignedChangeRateAndKeepsMissingAsNull() {
+        Map<Object, Object> values = new java.util.HashMap<>(price("2026-10-26T00:00:09Z"));
+        values.put("changeRate", "-0.0125");
+        given(hash.entries("demo:price:005930")).willReturn(values);
+        assertThat(service.getPrice("005930").changeRate()).isEqualByComparingTo("-0.0125");
+        values.remove("changeRate");
+        assertThat(service.getPrice("005930").changeRate()).isNull();
+        values.put("changeRate", "invalid");
+        assertThat(service.getPrice("005930").price()).isEqualByComparingTo("71200");
+        assertThat(service.getPrice("005930").changeRate()).isNull();
+    }
+
+    @Test
     @DisplayName("demo:price:{code} 해시를 읽어 현재가를 돌려준다")
     void readsDemoPrice() {
         given(hash.entries("demo:price:005930")).willReturn(price("2026-10-26T00:00:09Z"));

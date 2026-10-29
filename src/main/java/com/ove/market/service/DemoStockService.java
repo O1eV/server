@@ -20,7 +20,7 @@ import com.ove.market.collector.kiwoom.KiwoomCollectorConfig;
 import com.ove.market.collector.kiwoom.KiwoomProperties;
 import com.ove.market.dto.CandleListResponse;
 import com.ove.market.dto.CandleResponse;
-import com.ove.market.dto.CollectedPriceResponse;
+import com.ove.market.dto.DemoStockPriceResponse;
 
 /**
  * 발표용 주식 시세 조회. 키움 수집기가 저장한 Redis(demo:price:{code})와 candles 테이블을 읽기만 하고
@@ -55,7 +55,7 @@ public class DemoStockService {
     }
 
     // 수집된 최신 현재가. 키가 없으면(장 마감으로 만료, 미수신) 503
-    public CollectedPriceResponse getPrice(String code) {
+    public DemoStockPriceResponse getPrice(String code) {
         String symbol = requireConfigured(code);
         try {
             Map<Object, Object> values = redis.opsForHash()
@@ -70,7 +70,13 @@ public class DemoStockService {
                 throw new BusinessException(ErrorCode.COLLECTOR_UNAVAILABLE);
             }
             boolean stale = Duration.between(updatedAt, clock.instant()).compareTo(STALE_AFTER) > 0;
-            return new CollectedPriceResponse(symbol, price, tradeAt, updatedAt, stale);
+            BigDecimal changeRate = null;
+            Object rawRate = values.get("changeRate");
+            if (rawRate != null) {
+                try { changeRate = new BigDecimal(rawRate.toString()); }
+                catch (NumberFormatException ignored) { /* 기존 가격은 계속 제공한다. */ }
+            }
+            return new DemoStockPriceResponse(symbol, price, tradeAt, updatedAt, stale, changeRate);
         } catch (BusinessException exception) {
             throw exception;
         } catch (RuntimeException exception) {

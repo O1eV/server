@@ -92,9 +92,19 @@ public final class KiwoomRealtimeParser {
                 return null;
             }
             return new Trade(symbol, price, volume,
-                    kstDate.atTime(time).atZone(KiwoomTokenProvider.KST).toInstant());
+                    kstDate.atTime(time).atZone(KiwoomTokenProvider.KST).toInstant(),
+                    parseChangeRate(values.path("12").asString("")));
         } catch (DateTimeParseException | NumberFormatException e) {
             log.warn("해석할 수 없는 키움 체결 값을 건너뜀: symbol={}", symbol);
+            return null;
+        }
+    }
+
+    // FID 12는 전일 대비 백분율이다. 부호를 보존하고 API에서는 소수 비율로 통일한다.
+    private static BigDecimal parseChangeRate(String value) {
+        try {
+            return value.isBlank() ? null : new BigDecimal(value.trim()).movePointLeft(2);
+        } catch (NumberFormatException exception) {
             return null;
         }
     }

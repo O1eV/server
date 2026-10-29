@@ -25,7 +25,7 @@ import com.ove.global.exception.ErrorCode;
 import com.ove.global.security.JwtProvider;
 import com.ove.market.collector.MarketCollector;
 import com.ove.market.dto.CandleListResponse;
-import com.ove.market.dto.CollectedPriceResponse;
+import com.ove.market.dto.DemoStockPriceResponse;
 import com.ove.market.service.DemoStockService;
 
 /** 키움 수집기가 켜졌을 때(서비스는 가짜)만 열리는 /api/demo/stocks 엔드포인트. */
@@ -62,13 +62,14 @@ class DemoStockControllerTest {
     @DisplayName("현재가: 200 envelope, no-store")
     void price() throws Exception {
         Instant now = Instant.parse("2026-10-26T00:00:00Z");
-        given(service.getPrice("005930")).willReturn(new CollectedPriceResponse("005930", new BigDecimal("71200"), now, now, false));
+        given(service.getPrice("005930")).willReturn(new DemoStockPriceResponse("005930", new BigDecimal("71200"), now, now, false, new BigDecimal("-0.0125")));
 
         mvc.perform(get("/api/demo/stocks/005930/price").header("Authorization", token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.symbol").value("005930"))
                 .andExpect(jsonPath("$.data.price").value(71200))
                 .andExpect(jsonPath("$.data.stale").value(false))
+                .andExpect(jsonPath("$.data.changeRate").value(-0.0125))
                 .andExpect(header().string("Cache-Control", "no-store"));
     }
 

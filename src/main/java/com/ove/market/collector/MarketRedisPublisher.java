@@ -53,10 +53,14 @@ public class MarketRedisPublisher {
         }
         latestTradeAt.put(trade.symbol(), trade.tradeTimestamp());
 
-        // changeRate는 체결 메시지로는 알 수 없어서 이번에는 넣지 않는다.
+        // 주식 전일 대비 등락률은 데모 캐시에만 저장하고 공개 tick에는 싣지 않는다.
         String key = keyPrefix + CollectorKeys.priceKey(trade.symbol());
         Map<String, String> hash = new LinkedHashMap<>();
         hash.put("price", trade.price().toPlainString());
+        if ("demo:".equals(keyPrefix)) {
+            if (trade.changeRate() != null) hash.put("changeRate", trade.changeRate().toPlainString());
+            else redisTemplate.opsForHash().delete(key, "changeRate");
+        }
         hash.put("tradeTimestamp", trade.tradeTimestamp().toString());
         hash.put("updatedAt", now.toString());
         redisTemplate.opsForHash().putAll(key, hash);

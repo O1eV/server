@@ -32,3 +32,12 @@
 
 테스트: `./gradlew test --tests 'com.ove.market.service.*' --tests 'com.ove.market.controller.*' --tests 'com.ove.market.collector.CollectorDisabledTest' --tests 'com.ove.market.collector.MarketCollectorEndToEndTest'`
 통합 테스트는 가짜 업비트 WebSocket 서버에서 전송한 체결을 실제 Redis·TimescaleDB에 반영하고 REST 응답까지 검증한다(Docker 필요).
+
+## 국내 주식 전일 대비 등락률 (#69)
+
+주식 데모 `GET /api/demo/stocks/{code}/price`에 nullable `changeRate` 필드를 추가한다.
+`-0.0125`는 전일 대비 `-1.25%`다. 키움 0B의 FID 12 백분율을 100으로 나누며
+부호를 보존한다. 누락·잘못된 값은 null이며 0%로 가정하지 않는다.
+코인 응답과 일반 Pub/Sub tick에는 이 주식 값을 추가하지 않는다.
+서버 배포 후 새 체결부터 `demo:price:{code}`에 저장된다. 이전 캐시는 null로 조회된다.
+근거: [키움 공식 0B 예제](https://github.com/Kiwoom-Securities/Kiwoom-REST-API/blob/main/examples/국내주식/실시간시세/subscribe_domestic_stock_trade_pubsub.py).

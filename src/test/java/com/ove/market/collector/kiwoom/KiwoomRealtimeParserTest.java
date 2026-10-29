@@ -24,6 +24,16 @@ class KiwoomRealtimeParserTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
+    void preservesSignedDailyChangeRate() {
+        for (String rate : List.of("+2.50", "-1.25", "0")) {
+            Trade trade = parse(real("0B", "005930", "20", "100000", "10", "1000", "15", "1", "12", rate)).get(0);
+            assertThat(trade.changeRate()).isEqualByComparingTo(new BigDecimal(rate).movePointLeft(2));
+        }
+        Trade missing = parse(real("0B", "005930", "20", "100000", "10", "1000", "15", "1")).get(0);
+        assertThat(missing.changeRate()).isNull();
+    }
+
+    @Test
     @DisplayName("부호가 붙은 현재가·거래량은 절대값으로, 체결시간(KST)은 UTC로 바뀐다")
     void parsesSignedValuesAndKstTime() {
         List<Trade> trades = parse(real("0B", "005930", "20", "090015", "10", "-78800", "15", "+82", "290", "2"));

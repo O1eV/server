@@ -8,7 +8,7 @@ import com.ove.global.docs.ApiErrorCodes;
 import com.ove.global.exception.ErrorCode;
 import com.ove.global.response.ApiResponse;
 import com.ove.market.dto.CandleListResponse;
-import com.ove.market.dto.CollectedPriceResponse;
+import com.ove.market.dto.DemoStockPriceResponse;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -28,7 +28,7 @@ public interface DemoStockControllerDocs {
             """)
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수집된 현재가")
     @ApiErrorCodes({ErrorCode.UNAUTHORIZED, ErrorCode.MARKET_NOT_FOUND, ErrorCode.COLLECTOR_UNAVAILABLE})
-    ResponseEntity<ApiResponse<CollectedPriceResponse>> getPrice(
+    ResponseEntity<ApiResponse<DemoStockPriceResponse>> getPrice(
             @Parameter(description = "종목 코드(6자리)", example = "005930") String code);
 
     @Operation(summary = "주식 시연 캔들 조회", description = """
