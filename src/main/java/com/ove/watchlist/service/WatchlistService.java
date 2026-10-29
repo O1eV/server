@@ -7,17 +7,16 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
-import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
-import com.ove.market.service.DemoStockService;
+import org.springframework.stereotype.Service;
 
 import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
-import com.ove.user.repository.UserRepository;
 import com.ove.market.client.UpbitMarketResponse;
 import com.ove.market.client.UpbitTickerResponse;
+import com.ove.market.service.DemoStockService;
 import com.ove.market.service.MarketService;
+import com.ove.user.repository.UserRepository;
 import com.ove.watchlist.domain.Watchlist;
 import com.ove.watchlist.dto.WatchlistAddResponse;
 import com.ove.watchlist.dto.WatchlistItemResponse;
@@ -40,12 +39,6 @@ public class WatchlistService {
     private final ObjectProvider<DemoStockService> demoStocks;
 
     public WatchlistService(WatchlistRepository watchlistRepository, WatchlistWriteService writeService,
-                            MarketService marketService, UserRepository userRepository) {
-        this(watchlistRepository, writeService, marketService, userRepository, null);
-    }
-
-    @Autowired
-    public WatchlistService(WatchlistRepository watchlistRepository, WatchlistWriteService writeService,
                             MarketService marketService, UserRepository userRepository,
                             ObjectProvider<DemoStockService> demoStocks) {
         this.demoStocks = demoStocks;
@@ -61,7 +54,7 @@ public class WatchlistService {
         String normalized = normalize(symbol);
         if (normalized.matches("[0-9]{6}")) {
             // prod 또는 수집 비활성 환경에서는 빈 자체가 없어 주식 신규 등록을 차단한다.
-            DemoStockService service = demoStocks == null ? null : demoStocks.getIfAvailable();
+            DemoStockService service = demoStocks.getIfAvailable();
             if (service == null || !service.supportsSymbol(normalized)) {
                 throw new BusinessException(ErrorCode.MARKET_NOT_FOUND);
             }
