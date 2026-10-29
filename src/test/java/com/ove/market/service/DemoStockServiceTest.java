@@ -63,6 +63,8 @@ class DemoStockServiceTest {
         assertThat(service.getPrice("005930").changeRate()).isEqualByComparingTo("-0.0125");
         values.remove("changeRate");
         assertThat(service.getPrice("005930").changeRate()).isNull();
+        values.put("changeRate", "");
+        assertThat(service.getPrice("005930").changeRate()).isNull();
         values.put("changeRate", "invalid");
         assertThat(service.getPrice("005930").price()).isEqualByComparingTo("71200");
         assertThat(service.getPrice("005930").changeRate()).isNull();

@@ -39,5 +39,5 @@
 `-0.0125`는 전일 대비 `-1.25%`다. 키움 0B의 FID 12 백분율을 100으로 나누며
 부호를 보존한다. 누락·잘못된 값은 null이며 0%로 가정하지 않는다.
 코인 응답과 일반 Pub/Sub tick에는 이 주식 값을 추가하지 않는다.
-서버 배포 후 새 체결부터 `demo:price:{code}`에 저장된다. 이전 캐시는 null로 조회된다.
+서버 배포 후 새 체결부터 `demo:price:{code}`에 저장된다. 이전 캐시는 null로 조회된다. 누락값은 Redis 해시의 빈 문자열로 기록하고 API에서 null로 변환하며, 가격·시각·등락률은 단일 HSET으로 갱신한다.
 근거: [키움 공식 0B 예제](https://github.com/Kiwoom-Securities/Kiwoom-REST-API/blob/main/examples/국내주식/실시간시세/subscribe_domestic_stock_trade_pubsub.py).

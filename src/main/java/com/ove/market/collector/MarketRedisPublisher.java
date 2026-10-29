@@ -23,6 +23,7 @@ public class MarketRedisPublisher {
     private final Duration tickInterval;
     // Redis 키·채널 이름 앞에 붙는 접두사. 업비트(코인)는 "", 키움(주식 시연용)은 "demo:"라서 서로 키가 섞이지 않는다.
     private final String keyPrefix;
+    private final boolean includeChangeRate;
 
     private final Map<String, Instant> latestTradeAt = new HashMap<>();
     private final Map<String, Instant> lastTickAt = new HashMap<>();
@@ -30,11 +31,12 @@ public class MarketRedisPublisher {
 
     public MarketRedisPublisher(StringRedisTemplate redisTemplate, ObjectMapper objectMapper,
                                 Duration priceTtl, Duration tickInterval) {
-        this(redisTemplate, objectMapper, priceTtl, tickInterval, "");
+        this(redisTemplate, objectMapper, priceTtl, tickInterval, "", false);
     }
 
     public MarketRedisPublisher(StringRedisTemplate redisTemplate, ObjectMapper objectMapper,
-                                Duration priceTtl, Duration tickInterval, String keyPrefix) {
+                                Duration priceTtl, Duration tickInterval, String keyPrefix, boolean includeChangeRate) {
+        this.includeChangeRate = includeChangeRate;
         this.keyPrefix = keyPrefix;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
@@ -57,9 +59,9 @@ public class MarketRedisPublisher {
         String key = keyPrefix + CollectorKeys.priceKey(trade.symbol());
         Map<String, String> hash = new LinkedHashMap<>();
         hash.put("price", trade.price().toPlainString());
-        if ("demo:".equals(keyPrefix)) {
-            if (trade.changeRate() != null) hash.put("changeRate", trade.changeRate().toPlainString());
-            else redisTemplate.opsForHash().delete(key, "changeRate");
+        if (includeChangeRate) {
+            // 누락값도 같은 HSET에 넣어 가격·등락률을 원자적으로 갱신한다. 빈 값은 API에서 null이다.
+            hash.put("changeRate", trade.changeRate() == null ? "" : trade.changeRate().toPlainString());
         }
         hash.put("tradeTimestamp", trade.tradeTimestamp().toString());
         hash.put("updatedAt", now.toString());

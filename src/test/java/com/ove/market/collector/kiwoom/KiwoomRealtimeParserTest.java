@@ -24,6 +24,16 @@ class KiwoomRealtimeParserTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
+    void malformedOrBlankRateDoesNotDiscardValidTrade() {
+        for (String value : List.of("abc", "", " ", "--1.2")) {
+            Trade trade = parse(real("0B", "005930", "20", "100000", "10", "1000", "15", "1", "12", value)).get(0);
+            assertThat(trade.changeRate()).isNull();
+            assertThat(trade.price()).isEqualByComparingTo("1000");
+            assertThat(trade.tradeTimestamp()).isEqualTo(Instant.parse("2026-10-21T01:00:00Z"));
+        }
+    }
+
+    @Test
     void preservesSignedDailyChangeRate() {
         for (String rate : List.of("+2.50", "-1.25", "0")) {
             Trade trade = parse(real("0B", "005930", "20", "100000", "10", "1000", "15", "1", "12", rate)).get(0);

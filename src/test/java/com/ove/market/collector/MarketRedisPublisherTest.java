@@ -75,14 +75,14 @@ class MarketRedisPublisherTest {
     @Test
     void storesDemoChangeRateAndClearsMissingRate() {
         var publisher = new MarketRedisPublisher(redisTemplate, new ObjectMapper(),
-                Duration.ofSeconds(30), Duration.ofSeconds(1), "demo:");
+                Duration.ofSeconds(30), Duration.ofSeconds(1), "test-demo:", true);
         Instant now = Instant.now();
         publisher.onTrade(new Trade("005930", new BigDecimal("1000"), BigDecimal.ONE,
                 now, new BigDecimal("-0.0125")), now);
-        assertThat(redisTemplate.opsForHash().get("demo:price:005930", "changeRate")).isEqualTo("-0.0125");
+        assertThat(redisTemplate.opsForHash().get("test-demo:price:005930", "changeRate")).isEqualTo("-0.0125");
         publisher.onTrade(new Trade("005930", new BigDecimal("1000"), BigDecimal.ONE,
                 now.plusSeconds(1)), now.plusSeconds(1));
-        assertThat(redisTemplate.opsForHash().get("demo:price:005930", "changeRate")).isNull();
+        assertThat(redisTemplate.opsForHash().get("test-demo:price:005930", "changeRate")).isEqualTo("");
     }
 
     @Test

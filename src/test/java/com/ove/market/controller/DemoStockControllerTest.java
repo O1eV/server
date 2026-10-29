@@ -52,6 +52,16 @@ class DemoStockControllerTest {
     }
 
     @Test
+    void serializesMissingChangeRateAsJsonNull() throws Exception {
+        Instant now = Instant.parse("2026-10-26T00:00:00Z");
+        given(service.getPrice("005930")).willReturn(new DemoStockPriceResponse("005930", new BigDecimal("71200"), now, now, false, null));
+        mvc.perform(get("/api/demo/stocks/005930/price").header("Authorization", token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.changeRate").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(org.hamcrest.Matchers.containsString("\"changeRate\":null")));
+    }
+
+    @Test
     @DisplayName("로그인이 필요하다")
     void requiresLogin() throws Exception {
         mvc.perform(get("/api/demo/stocks/005930/price")).andExpect(status().isUnauthorized());

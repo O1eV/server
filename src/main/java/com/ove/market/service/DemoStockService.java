@@ -72,7 +72,7 @@ public class DemoStockService {
             boolean stale = Duration.between(updatedAt, clock.instant()).compareTo(STALE_AFTER) > 0;
             BigDecimal changeRate = null;
             Object rawRate = values.get("changeRate");
-            if (rawRate != null) {
+            if (rawRate != null && !rawRate.toString().isBlank()) {
                 try { changeRate = new BigDecimal(rawRate.toString()); }
                 catch (NumberFormatException ignored) { /* 기존 가격은 계속 제공한다. */ }
             }
