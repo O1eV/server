@@ -52,6 +52,36 @@ class WatchlistServiceTest {
     }
 
     @Test
+    void addsConfiguredDemoStockWithoutCallingUpbit() {
+        var provider = org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
+        var demo = org.mockito.Mockito.mock(com.ove.market.service.DemoStockService.class);
+        given(provider.getIfAvailable()).willReturn(demo);
+        given(demo.supportsSymbol("005930")).willReturn(true);
+        var service = new WatchlistService(watchlistRepository, writeService, marketService, userRepository, provider);
+        service.add(USER_ID, " 005930 ");
+        verify(writeService).add(USER_ID, "005930");
+        verifyNoInteractions(marketService);
+    }
+
+    @Test
+    void rejectsStockWhenDemoIsDisabled() {
+        assertThatThrownBy(() -> watchlistService.add(USER_ID, "005930"))
+                .isInstanceOf(BusinessException.class);
+        verifyNoInteractions(writeService, marketService);
+    }
+
+    @Test
+    void rejectsUnconfiguredDemoStock() {
+        var provider = org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
+        var demo = org.mockito.Mockito.mock(com.ove.market.service.DemoStockService.class);
+        given(provider.getIfAvailable()).willReturn(demo);
+        var service = new WatchlistService(watchlistRepository, writeService, marketService, userRepository, provider);
+        assertThatThrownBy(() -> service.add(USER_ID, "000660"))
+                .isInstanceOf(BusinessException.class);
+        verifyNoInteractions(writeService, marketService);
+    }
+
+    @Test
     @DisplayName("추가: 소문자·공백이 섞여도 대문자로 정규화해 종목을 확인한 뒤 쓰기 서비스에 넘긴다")
     void addNormalizesSymbol() {
         WatchlistAddResponse expected = new WatchlistAddResponse(watchlist("KRW-BTC"));

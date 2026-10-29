@@ -101,6 +101,10 @@ public class DemoStockService {
         }
     }
 
+    public boolean supportsSymbol(String symbol) {
+        return symbols.contains(symbol);
+    }
+
     // KIWOOM_SYMBOLS에 설정된 종목만 허용한다.
     private String requireConfigured(String code) {
         String symbol = code == null ? "" : code.trim().toUpperCase(java.util.Locale.ROOT);
