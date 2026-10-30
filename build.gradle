@@ -46,4 +46,8 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// 임시 진단: System.out을 CI 로그에 보이게 한다 (머지 금지)
+	testLogging {
+		showStandardStreams = true
+	}
 }

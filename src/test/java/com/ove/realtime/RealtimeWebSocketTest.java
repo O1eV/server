@@ -78,11 +78,14 @@ class RealtimeWebSocketTest {
     private TokenRedisRepository tokenRedisRepository;
 
     private WebSocketStompClient stompClient;
+    private static final java.util.concurrent.atomic.AtomicInteger DIAG_IDS = new java.util.concurrent.atomic.AtomicInteger();
+
     private final List<StompSession> sessions = new CopyOnWriteArrayList<>();
 
     // 테스트마다 STOMP 클라이언트를 새로 만들 때 사용
     @BeforeEach
-    void setUp() {
+    void setUp(org.junit.jupiter.api.TestInfo testInfo) {
+        System.out.println("[WS-DIAG] test-start " + testInfo.getTestMethod().map(m -> m.getName()).orElse("?") + " " + testInfo.getDisplayName() + " thread=" + Thread.currentThread().getName());
         stompClient = new WebSocketStompClient(new StandardWebSocketClient());
         stompClient.setMessageConverter(new JacksonJsonMessageConverter());
         stompClient.start();
@@ -132,7 +135,7 @@ class RealtimeWebSocketTest {
         assertThat(received.get("time")).isEqualTo("2026-10-19T01:00:00Z");
     }
 
-    @Test
+    @org.junit.jupiter.api.RepeatedTest(100)
     @DisplayName("구독 제한: 로그인 없이 신호를 구독하면 UNAUTHORIZED, 없는 종목은 MARKET_NOT_FOUND")
     void subscribeError() throws Exception {
         ErrorCatcher signalError = new ErrorCatcher();
@@ -144,7 +147,7 @@ class RealtimeWebSocketTest {
         assertThat(marketError.message()).isEqualTo("MARKET_NOT_FOUND");
     }
 
-    @Test
+    @org.junit.jupiter.api.RepeatedTest(100)
     @DisplayName("접속: 잘못된 토큰으로 접속하면 UNAUTHORIZED")
     void badToken() throws Exception {
         ErrorCatcher error = new ErrorCatcher();
@@ -184,7 +187,7 @@ class RealtimeWebSocketTest {
         assertThat(otherAlerts.poll(500, TimeUnit.MILLISECONDS)).isNull();
     }
 
-    @Test
+    @org.junit.jupiter.api.RepeatedTest(100)
     @DisplayName("SEND 막기: 클라이언트가 /topic으로 직접 보내면 FORBIDDEN이고, 다른 구독자에게 가지 않는다")
     void sendBlocked() throws Exception {
         StompSession listener = connect(null, new ErrorCatcher());
@@ -200,7 +203,7 @@ class RealtimeWebSocketTest {
         assertThat(prices.poll(500, TimeUnit.MILLISECONDS)).isNull();
     }
 
-    @Test
+    @org.junit.jupiter.api.RepeatedTest(100)
     @DisplayName("로그아웃: 접속 뒤 토큰이 블랙리스트에 오르면 알림이 끊기고, 새로 구독하면 UNAUTHORIZED")
     void logoutStopsAlerts() throws Exception {
         User me = saveUser("me@ove.com", "나");
@@ -349,9 +352,18 @@ class RealtimeWebSocketTest {
     private class ErrorCatcher extends StompSessionHandlerAdapter {
 
         private final CompletableFuture<String> error = new CompletableFuture<>();
+        private final int id = DIAG_IDS.incrementAndGet();
+        private final java.util.concurrent.atomic.AtomicInteger seq = new java.util.concurrent.atomic.AtomicInteger();
+
+        // [WS-DIAG] 임시 진단 로그: catcher 번호, 호출 순서, nanoTime, 스레드
+        private void diag(String event, String detail) {
+            System.out.println("[WS-DIAG] catcher=" + id + " seq=" + seq.incrementAndGet() + " t=" + System.nanoTime()
+                    + " thread=" + Thread.currentThread().getName() + " event=" + event + " " + detail);
+        }
 
         @Override
         public void afterConnected(StompSession session, StompHeaders headers) {
+            diag("afterConnected", "session=" + session.getSessionId());
             sessions.add(session);
         }
 
@@ -363,12 +375,14 @@ class RealtimeWebSocketTest {
 
         @Override
         public void handleTransportError(StompSession session, Throwable exception) {
+            diag("handleTransportError", String.valueOf(exception));
             error.completeExceptionally(exception);
         }
 
         // 서버가 보낸 ERROR 프레임의 message를 기억할 때 사용
         @Override
         public void handleFrame(StompHeaders headers, Object payload) {
+            diag("handleFrame", "message=" + headers.getFirst("message"));
             error.complete(headers.getFirst("message"));
         }
 
@@ -376,6 +390,7 @@ class RealtimeWebSocketTest {
         @Override
         public void handleException(StompSession session, StompCommand command, StompHeaders headers,
                                     byte[] payload, Throwable exception) {
+            diag("handleException", "command=" + command + " " + exception);
             error.completeExceptionally(exception);
         }
 
