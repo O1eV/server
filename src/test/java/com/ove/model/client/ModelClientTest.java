@@ -70,6 +70,18 @@ class ModelClientTest {
     }
 
     @Test
+    @DisplayName("평문 HTTP/1.1로 호출한다: h2c 업그레이드 헤더를 붙이지 않는다")
+    void usesPlainHttp11WithoutUpgradeHeaders() {
+        server.handle("/api/v1/predict", request -> Reply.ok(OK_BODY));
+
+        client.predict(candles(15));
+
+        var request = server.requestsTo("/api/v1/predict").get(0);
+        assertThat(request.headers()).doesNotContainKeys("upgrade", "http2-settings");
+        assertThat(request.headers().getOrDefault("connection", "").toLowerCase()).doesNotContain("upgrade");
+    }
+
+    @Test
     @DisplayName("5xx: 한 번 다시 시도하고 그래도 실패하면 MODEL_UNAVAILABLE")
     void serverErrorRetriesOnce() {
         server.handle("/api/v1/predict", request -> Reply.of(500, "{}"));

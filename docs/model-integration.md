@@ -20,7 +20,7 @@
 1. 수집기가 1분봉을 마감하면 Redis `candles.closed:{symbol}`로 알린다.
 2. `CandleClosedListener`가 알림을 받아 **단일 스레드 executor**에 넘긴다(대기열 30, 넘치면 오래된 것부터 버림). 수집기·Redis 수신은 막히지 않고, 어떤 예외도 밖으로 퍼지지 않는다.
 3. `SignalGenerationService`가 `candles`에서 최근 N개를 읽는다. **15개 미만이면 호출하지 않고 조용히 건너뛴다.** 기동 직후나 수집 공백처럼 캔들이 모자란 구간에는 stale 알림도 가지 않는다.
-4. `ModelClient`가 캔들 배열(`open, high, low, close, volume, bar_time`, 오래된 것부터)을 보낸다. 500ms 안에 못 받거나 5xx면 **1회 재시도**하고, 4xx는 재시도하지 않는다.
+4. `ModelClient`가 **평문 HTTP/1.1로** (h2c 업그레이드 헤더 없이) 캔들 배열(`open, high, low, close, volume, bar_time`, 오래된 것부터)을 보낸다. 500ms 안에 못 받거나 5xx면 **1회 재시도**하고, 4xx는 재시도하지 않는다.
 5. 성공하면 `RealtimePublisher.publishSignalChange`가 `signals`에 저장하고 `/topic/signals/{symbol}`로 발행한다. 확률은 합 1로 맞추고 confidence는 0~1로 제한한다.
 
 ## 신호 변경 알림

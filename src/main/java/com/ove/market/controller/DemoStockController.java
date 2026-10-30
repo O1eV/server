@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.ove.global.response.ApiResponse;
 import com.ove.market.dto.CandleListResponse;
-import com.ove.market.dto.CollectedPriceResponse;
+import com.ove.market.dto.DemoStockPriceResponse;
 import com.ove.market.service.DemoStockService;
 
 import lombok.RequiredArgsConstructor;
@@ -35,7 +35,7 @@ public class DemoStockController implements DemoStockControllerDocs {
     // 수집된 주식 현재가를 조회할 때 사용
     @Override
     @GetMapping("/{code}/price")
-    public ResponseEntity<ApiResponse<CollectedPriceResponse>> getPrice(@PathVariable String code) {
+    public ResponseEntity<ApiResponse<DemoStockPriceResponse>> getPrice(@PathVariable String code) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(ApiResponse.success(HttpStatus.OK, "수집 시세를 조회했습니다.", service.getPrice(code)));
     }

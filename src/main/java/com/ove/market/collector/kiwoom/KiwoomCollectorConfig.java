@@ -90,7 +90,7 @@ public class KiwoomCollectorConfig {
         // 나중에 Redis 시세를 STOMP로 중계할 때 코인 키만 구독하면 주식 시세가 사용자에게 나가지 않는다.
         // 업비트용 공용 MarketRedisPublisher 빈과 타입이 겹치지 않도록 빈으로 등록하지 않고 여기서 직접 만든다.
         MarketRedisPublisher redisPublisher = new MarketRedisPublisher(redisTemplate, objectMapper,
-                collectorProperties.priceTtl(), collectorProperties.tickPublishInterval(), DEMO_KEY_PREFIX);
+                collectorProperties.priceTtl(), collectorProperties.tickPublishInterval(), DEMO_KEY_PREFIX, true);
         return new MarketCollector("키움", properties.normalizedSymbols(), collectorProperties, tradeSource,
                 new CandleAggregator(collectorProperties.graceDelay()), candleRepository, redisPublisher,
                 backfillSource.getIfAvailable(), clock);

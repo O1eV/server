@@ -3,13 +3,16 @@ package com.ove.market.collector;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -34,8 +37,9 @@ class MarketRedisPublisherTest {
 
     private static LettuceConnectionFactory connectionFactory;
     private static StringRedisTemplate redisTemplate;
-    private static RedisMessageListenerContainer listenerContainer;
-    private static final List<String[]> RECEIVED = new CopyOnWriteArrayList<>(); // {channel, message}
+    private RedisMessageListenerContainer listenerContainer;
+    private String keyPrefix;
+    private final List<String[]> RECEIVED = new CopyOnWriteArrayList<>(); // {channel, message}
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private MarketRedisPublisher publisher;
@@ -47,29 +51,47 @@ class MarketRedisPublisherTest {
         connectionFactory.afterPropertiesSet();
         redisTemplate = new StringRedisTemplate(connectionFactory);
         redisTemplate.afterPropertiesSet();
-
-        listenerContainer = new RedisMessageListenerContainer();
-        listenerContainer.setConnectionFactory(connectionFactory);
-        listenerContainer.afterPropertiesSet();
-        listenerContainer.start();
-        listenerContainer.addMessageListener((message, pattern) -> RECEIVED.add(new String[] {
-                new String(message.getChannel()), new String(message.getBody())}),
-                List.of(new PatternTopic("prices:*"), new PatternTopic("candles.closed:*")));
     }
 
     @AfterAll
     static void tearDownRedis() throws Exception {
-        listenerContainer.stop();
-        listenerContainer.destroy();
         connectionFactory.destroy();
     }
 
     @BeforeEach
     void setUp() {
-        redisTemplate.getConnectionFactory().getConnection().serverCommands().flushAll();
-        RECEIVED.clear();
+        // 테스트마다 채널을 분리해 이전 테스트의 지연 콜백을 받지 않는다.
+        keyPrefix = "publisher-test:" + UUID.randomUUID() + ":";
+        listenerContainer = new RedisMessageListenerContainer();
+        listenerContainer.setConnectionFactory(connectionFactory);
+        listenerContainer.addMessageListener((message, pattern) -> RECEIVED.add(new String[] {
+                new String(message.getChannel(), StandardCharsets.UTF_8).substring(keyPrefix.length()),
+                new String(message.getBody(), StandardCharsets.UTF_8)}),
+                List.of(new PatternTopic(keyPrefix + "prices:*"), new PatternTopic(keyPrefix + "candles.closed:*")));
+        listenerContainer.afterPropertiesSet();
+        // 리스너를 먼저 등록하고 start()의 구독 완료 후 발행한다.
+        listenerContainer.start();
         publisher = new MarketRedisPublisher(redisTemplate, objectMapper, Duration.ofMinutes(10),
-                Duration.ofSeconds(1));
+                Duration.ofSeconds(1), keyPrefix, false);
+    }
+
+    @AfterEach
+    void stopListener() throws Exception {
+        listenerContainer.stop();
+        listenerContainer.destroy();
+    }
+
+    @Test
+    void storesDemoChangeRateAndClearsMissingRate() {
+        var publisher = new MarketRedisPublisher(redisTemplate, new ObjectMapper(),
+                Duration.ofSeconds(30), Duration.ofSeconds(1), "test-demo:", true);
+        Instant now = Instant.now();
+        publisher.onTrade(new Trade("005930", new BigDecimal("1000"), BigDecimal.ONE,
+                now, new BigDecimal("-0.0125")), now);
+        assertThat(redisTemplate.opsForHash().get("test-demo:price:005930", "changeRate")).isEqualTo("-0.0125");
+        publisher.onTrade(new Trade("005930", new BigDecimal("1000"), BigDecimal.ONE,
+                now.plusSeconds(1)), now.plusSeconds(1));
+        assertThat(redisTemplate.opsForHash().get("test-demo:price:005930", "changeRate")).isEqualTo("");
     }
 
     @Test
@@ -77,7 +99,7 @@ class MarketRedisPublisherTest {
     void writesPriceHash() {
         publisher.onTrade(trade("KRW-BTC", "150000000.5", T0.minusMillis(30)), T0);
 
-        Map<Object, Object> hash = redisTemplate.opsForHash().entries("price:KRW-BTC");
+        Map<Object, Object> hash = redisTemplate.opsForHash().entries(keyPrefix + "price:KRW-BTC");
         assertThat(hash).containsEntry("price", "150000000.5")
                 .containsEntry("tradeTimestamp", T0.minusMillis(30).toString())
                 .containsEntry("updatedAt", T0.toString())
@@ -89,7 +111,7 @@ class MarketRedisPublisherTest {
     void hashHasTtl() {
         publisher.onTrade(trade("KRW-BTC", "100", T0), T0);
 
-        Long ttl = redisTemplate.getExpire("price:KRW-BTC");
+        Long ttl = redisTemplate.getExpire(keyPrefix + "price:KRW-BTC");
         assertThat(ttl).isBetween(590L, 600L);
     }
 
@@ -115,7 +137,7 @@ class MarketRedisPublisherTest {
         publisher.flushPendingTicks(T0.plusMillis(3000));
         assertThat(ticks("prices:KRW-BTC")).hasSize(2);
         // 해시에는 체결마다 반영되어 있다
-        assertThat(redisTemplate.opsForHash().get("price:KRW-BTC", "price")).isEqualTo("102");
+        assertThat(redisTemplate.opsForHash().get(keyPrefix + "price:KRW-BTC", "price")).isEqualTo("102");
     }
 
     @Test
@@ -158,7 +180,7 @@ class MarketRedisPublisherTest {
         publisher.onTrade(trade("KRW-BTC", "200", T0.plusMillis(500)), T0.plusMillis(500));
         publisher.onTrade(trade("KRW-BTC", "100", T0), T0.plusMillis(600));
 
-        assertThat(redisTemplate.opsForHash().get("price:KRW-BTC", "price")).isEqualTo("200");
+        assertThat(redisTemplate.opsForHash().get(keyPrefix + "price:KRW-BTC", "price")).isEqualTo("200");
     }
 
     @Test
@@ -167,8 +189,12 @@ class MarketRedisPublisherTest {
         publisher.publishCandleClosed(new MinuteCandle("KRW-BTC", T0, new BigDecimal("100"), new BigDecimal("120"),
                 new BigDecimal("90"), new BigDecimal("110"), new BigDecimal("5.5")));
 
-        awaitMessages(1);
-        String[] message = RECEIVED.get(0);
+        assertThat(Await.until(() -> RECEIVED.stream()
+                .anyMatch(message -> message[0].equals("candles.closed:KRW-BTC"))))
+                .as("봉 마감 채널 수신").isTrue();
+        String[] message = RECEIVED.stream()
+                .filter(received -> received[0].equals("candles.closed:KRW-BTC"))
+                .findFirst().orElseThrow();
         assertThat(message[0]).isEqualTo("candles.closed:KRW-BTC");
         JsonNode candle = objectMapper.readTree(message[1]);
         assertThat(candle.get("symbol").asString()).isEqualTo("KRW-BTC");
