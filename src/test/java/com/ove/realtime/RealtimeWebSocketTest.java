@@ -15,6 +15,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -93,16 +94,29 @@ class RealtimeWebSocketTest {
     void cleanUp() {
         try {
             for (StompSession session : sessions) {
-                if (session.isConnected()) {
-                    session.disconnect();
-                }
+                disconnectQuietly(session);
             }
         } finally {
-            stompClient.stop();
-            sessions.clear();
+            try {
+                stompClient.stop();
+            } finally {
+                sessions.clear();
+                // 위 정리가 실패해도 데이터 삭제는 반드시 실행한다.
+                watchlistRepository.deleteAllInBatch();
+                userRepository.deleteAllInBatch();
+            }
         }
-        watchlistRepository.deleteAllInBatch();
-        userRepository.deleteAllInBatch();
+    }
+
+    // 서버가 먼저 연결을 끊은 세션은 isConnected 확인과 disconnect 사이에 닫힐 수 있어 예외를 무시한다
+    private void disconnectQuietly(StompSession session) {
+        try {
+            if (session.isConnected()) {
+                session.disconnect();
+            }
+        } catch (RuntimeException ignored) {
+            // 이미 닫힌 연결이라 정리할 것이 없다.
+        }
     }
 
     @Test
@@ -123,11 +137,11 @@ class RealtimeWebSocketTest {
     @DisplayName("구독 제한: 로그인 없이 신호를 구독하면 UNAUTHORIZED, 없는 종목은 MARKET_NOT_FOUND")
     void subscribeError() throws Exception {
         ErrorCatcher signalError = new ErrorCatcher();
-        subscribe(connect(null, signalError), "/topic/signals/KRW-BTC");
+        subscribe(connectReady(null, signalError), "/topic/signals/KRW-BTC");
         assertThat(signalError.message()).isEqualTo("UNAUTHORIZED");
 
         ErrorCatcher marketError = new ErrorCatcher();
-        subscribe(connect(null, marketError), "/topic/prices/KRW-DOGE");
+        subscribe(connectReady(null, marketError), "/topic/prices/KRW-DOGE");
         assertThat(marketError.message()).isEqualTo("MARKET_NOT_FOUND");
     }
 
@@ -180,7 +194,9 @@ class RealtimeWebSocketTest {
         drain(prices);
 
         ErrorCatcher senderError = new ErrorCatcher();
-        StompSession sender = connect(null, senderError);
+        StompSession sender = connectReady(null, senderError);
+        // 보낸 쪽 준비 확인용 시세가 listener에도 도착하므로, 금지된 SEND 이후만 보도록 비운다
+        drain(prices);
         sender.send("/topic/prices/KRW-BTC", Map.of("symbol", "KRW-BTC", "price", 1));
 
         assertThat(senderError.message()).isEqualTo("FORBIDDEN");
@@ -247,6 +263,16 @@ class RealtimeWebSocketTest {
     // 서버에 STOMP로 접속하고 연결이 끝날 때까지 기다릴 때 사용
     private StompSession connect(String token, ErrorCatcher handler) throws Exception {
         return connectAsync(token, handler).get(5, TimeUnit.SECONDS);
+    }
+
+    // 접속한 뒤 서버가 이 세션으로 첫 프레임 전송을 마칠 때까지 기다릴 때 사용
+    // 곧바로 거절될 구독을 보내면 서버가 ERROR를 보내고 바로 닫는데, 서버가 아직 이 세션에 전송 중이면 ERROR가 버려질 수 있다.
+    // (심플 브로커는 RECEIPT를 보내지 않는다) 허용된 시세를 구독해 메시지를 한 번 받으면 서버 전송이 이미 흐르고 있다는 뜻이다.
+    private StompSession connectReady(String token, ErrorCatcher handler) throws Exception {
+        StompSession session = connect(token, handler);
+        BlockingQueue<Map<String, Object>> prices = subscribe(session, "/topic/prices/KRW-BTC");
+        waitFor(prices, () -> priceRelay.onMessage(btcTick(), null));
+        return session;
     }
 
     // 서버에 STOMP 접속을 시작만 할 때 사용 (잘못된 토큰처럼 연결이 안 되는 경우)
@@ -335,7 +361,11 @@ class RealtimeWebSocketTest {
 
     private class ErrorCatcher extends StompSessionHandlerAdapter {
 
+        private static final long FRAME_GRACE_MS = 1000;
+
         private final CompletableFuture<String> error = new CompletableFuture<>();
+        // 전송 종료는 ERROR 프레임과 다른 스레드에서 거의 동시에 올 수 있어 별도로 기록한다.
+        private final CompletableFuture<Throwable> closed = new CompletableFuture<>();
 
         @Override
         public void afterConnected(StompSession session, StompHeaders headers) {
@@ -350,7 +380,7 @@ class RealtimeWebSocketTest {
 
         @Override
         public void handleTransportError(StompSession session, Throwable exception) {
-            error.completeExceptionally(exception);
+            closed.complete(exception);
         }
 
         // 서버가 보낸 ERROR 프레임의 message를 기억할 때 사용
@@ -367,8 +397,17 @@ class RealtimeWebSocketTest {
         }
 
         // 받은 ERROR message를 꺼낼 때 사용 (3초 안에 안 오면 실패)
+        // 연결 종료가 먼저 감지돼도 프레임이 곧 올 수 있어 짧게 더 기다리고, 끝내 안 오면 그 사실을 명확히 알리며 실패한다.
         String message() throws Exception {
-            return error.get(3, TimeUnit.SECONDS);
+            CompletableFuture.anyOf(error, closed).get(3, TimeUnit.SECONDS);
+            if (!error.isDone()) {
+                try {
+                    return error.get(FRAME_GRACE_MS, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException e) {
+                    throw new AssertionError("ERROR 프레임 없이 연결이 닫혔습니다.", closed.get());
+                }
+            }
+            return error.get();
         }
     }
 }
