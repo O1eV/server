@@ -73,6 +73,19 @@ class MarketRedisPublisherTest {
     }
 
     @Test
+    void storesDemoChangeRateAndClearsMissingRate() {
+        var publisher = new MarketRedisPublisher(redisTemplate, new ObjectMapper(),
+                Duration.ofSeconds(30), Duration.ofSeconds(1), "test-demo:", true);
+        Instant now = Instant.now();
+        publisher.onTrade(new Trade("005930", new BigDecimal("1000"), BigDecimal.ONE,
+                now, new BigDecimal("-0.0125")), now);
+        assertThat(redisTemplate.opsForHash().get("test-demo:price:005930", "changeRate")).isEqualTo("-0.0125");
+        publisher.onTrade(new Trade("005930", new BigDecimal("1000"), BigDecimal.ONE,
+                now.plusSeconds(1)), now.plusSeconds(1));
+        assertThat(redisTemplate.opsForHash().get("test-demo:price:005930", "changeRate")).isEqualTo("");
+    }
+
+    @Test
     @DisplayName("체결마다 price:{symbol} 해시에 price·tradeTimestamp·updatedAt을 쓰고 changeRate는 넣지 않는다")
     void writesPriceHash() {
         publisher.onTrade(trade("KRW-BTC", "150000000.5", T0.minusMillis(30)), T0);
