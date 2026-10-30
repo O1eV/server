@@ -197,7 +197,9 @@ class RealtimeWebSocketTest {
         drain(prices);
 
         ErrorCatcher senderError = new ErrorCatcher();
-        StompSession sender = connect(null, senderError);
+        StompSession sender = connectReady(null, senderError);
+        // 보낸 쪽 준비 확인용 시세가 listener에도 도착하므로, 금지된 SEND 이후만 보도록 비운다
+        drain(prices);
         sender.send("/topic/prices/KRW-BTC", Map.of("symbol", "KRW-BTC", "price", 1));
 
         assertThat(senderError.message()).isEqualTo("FORBIDDEN");
