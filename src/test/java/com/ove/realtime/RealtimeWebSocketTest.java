@@ -8,9 +8,11 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -76,17 +78,29 @@ class RealtimeWebSocketTest {
     private TokenRedisRepository tokenRedisRepository;
 
     private WebSocketStompClient stompClient;
+    private final List<StompSession> sessions = new CopyOnWriteArrayList<>();
 
     // 테스트마다 STOMP 클라이언트를 새로 만들 때 사용
     @BeforeEach
     void setUp() {
         stompClient = new WebSocketStompClient(new StandardWebSocketClient());
         stompClient.setMessageConverter(new JacksonJsonMessageConverter());
+        stompClient.start();
     }
 
     // 테스트가 끝날 때마다 만든 데이터를 지울 때 사용
     @AfterEach
     void cleanUp() {
+        try {
+            for (StompSession session : sessions) {
+                if (session.isConnected()) {
+                    session.disconnect();
+                }
+            }
+        } finally {
+            stompClient.stop();
+            sessions.clear();
+        }
         watchlistRepository.deleteAllInBatch();
         userRepository.deleteAllInBatch();
     }
@@ -319,9 +333,25 @@ class RealtimeWebSocketTest {
         return jwtProvider.createAccessToken(user.getId()).token();
     }
 
-    private static class ErrorCatcher extends StompSessionHandlerAdapter {
+    private class ErrorCatcher extends StompSessionHandlerAdapter {
 
         private final CompletableFuture<String> error = new CompletableFuture<>();
+
+        @Override
+        public void afterConnected(StompSession session, StompHeaders headers) {
+            sessions.add(session);
+        }
+
+        // ERROR 본문은 JSON이 아니므로 변환기를 거치지 않고 받는다.
+        @Override
+        public Type getPayloadType(StompHeaders headers) {
+            return byte[].class;
+        }
+
+        @Override
+        public void handleTransportError(StompSession session, Throwable exception) {
+            error.completeExceptionally(exception);
+        }
 
         // 서버가 보낸 ERROR 프레임의 message를 기억할 때 사용
         @Override
@@ -329,13 +359,11 @@ class RealtimeWebSocketTest {
             error.complete(headers.getFirst("message"));
         }
 
-        // ERROR 프레임을 처리하다 예외가 나도 message를 기억할 때 사용
+        // 프레임 처리 실패는 원인 예외로 즉시 보고한다.
         @Override
         public void handleException(StompSession session, StompCommand command, StompHeaders headers,
                                     byte[] payload, Throwable exception) {
-            if (command == StompCommand.ERROR) {
-                error.complete(headers.getFirst("message"));
-            }
+            error.completeExceptionally(exception);
         }
 
         // 받은 ERROR message를 꺼낼 때 사용 (3초 안에 안 오면 실패)
