@@ -93,16 +93,29 @@ class RealtimeWebSocketTest {
     void cleanUp() {
         try {
             for (StompSession session : sessions) {
-                if (session.isConnected()) {
-                    session.disconnect();
-                }
+                disconnectQuietly(session);
             }
         } finally {
-            stompClient.stop();
-            sessions.clear();
+            try {
+                stompClient.stop();
+            } finally {
+                sessions.clear();
+                // 위 정리가 실패해도 데이터 삭제는 반드시 실행한다.
+                watchlistRepository.deleteAllInBatch();
+                userRepository.deleteAllInBatch();
+            }
         }
-        watchlistRepository.deleteAllInBatch();
-        userRepository.deleteAllInBatch();
+    }
+
+    // 서버가 먼저 연결을 끊은 세션은 isConnected 확인과 disconnect 사이에 닫힐 수 있어 예외를 무시한다
+    private void disconnectQuietly(StompSession session) {
+        try {
+            if (session.isConnected()) {
+                session.disconnect();
+            }
+        } catch (RuntimeException ignored) {
+            // 이미 닫힌 연결이라 정리할 것이 없다.
+        }
     }
 
     @Test
