@@ -16,12 +16,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 
 import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
 import com.ove.market.client.UpbitMarketResponse;
 import com.ove.market.client.UpbitTickerResponse;
+import com.ove.market.service.DemoStockService;
 import com.ove.market.service.MarketService;
+import com.ove.user.repository.UserRepository;
 import com.ove.watchlist.domain.Watchlist;
 import com.ove.watchlist.dto.WatchlistAddResponse;
 import com.ove.watchlist.dto.WatchlistListResponse;
@@ -42,13 +45,45 @@ class WatchlistServiceTest {
     private MarketService marketService;
 
     @Mock
-    private com.ove.user.repository.UserRepository userRepository;
+    private UserRepository userRepository;
+
+    @Mock
+    private ObjectProvider<DemoStockService> demoStocks;
+
+    @Mock
+    private DemoStockService demoStockService;
 
     private WatchlistService watchlistService;
 
     @BeforeEach
     void setUp() {
-        watchlistService = new WatchlistService(watchlistRepository, writeService, marketService, userRepository);
+        watchlistService = new WatchlistService(watchlistRepository, writeService, marketService, userRepository, demoStocks);
+    }
+
+    @Test
+    void addsConfiguredDemoStockWithoutCallingUpbit() {
+        given(demoStocks.getIfAvailable()).willReturn(demoStockService);
+        given(demoStockService.supportsSymbol("005930")).willReturn(true);
+        watchlistService.add(USER_ID, " 005930 ");
+        verify(writeService).add(USER_ID, "005930");
+        verifyNoInteractions(marketService);
+    }
+
+    @Test
+    void rejectsStockWhenDemoIsDisabled() {
+        assertThatThrownBy(() -> watchlistService.add(USER_ID, "005930"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MARKET_NOT_FOUND));
+        verifyNoInteractions(writeService, marketService);
+    }
+
+    @Test
+    void rejectsUnconfiguredDemoStock() {
+        given(demoStocks.getIfAvailable()).willReturn(demoStockService);
+        assertThatThrownBy(() -> watchlistService.add(USER_ID, "000660"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MARKET_NOT_FOUND));
+        verifyNoInteractions(writeService, marketService);
     }
 
     @Test

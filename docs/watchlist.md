@@ -54,3 +54,13 @@ PostgreSQL 전환 회귀 검증(Docker 필요):
 `./gradlew test --tests 'com.ove.migration.WatchlistUuidMigrationTest'`.
 
 전환 구문 참고: [PostgreSQL ALTER TABLE 공식 문서](https://www.postgresql.org/docs/16/sql-altertable.html).
+
+## 데모 국내 주식 관심 등록 (#67)
+
+키움 수집기 활성화 및 비 prod 환경에서 `KIWOOM_SYMBOLS`에 포함된 6자리 종목도
+`POST /api/watchlist`의 symbol로 등록할 수 있다(예: `005930`).
+미설정 종목 또는 데모 비활성 환경의 신규 등록은 `MARKET_NOT_FOUND`다.
+기존 등록 항목은 데모가 꺼져도 삭제할 수 있다. 중복·최대 20개·사용자 격리는 코인과 동일하다.
+일반 관심 목록 API에 주식 시세를 포함하지 않는다. 주식 항목의 이름·가격·AI 필드는
+null일 수 있으며, 프런트는 로컬 종목명과 별도 인증된 `/api/demo/stocks/{code}/price`를 사용한다.
+기존 응답 구조와 경로에는 변경이 없다. 서버 배포 후 프런트 등록 기능이 동작한다.

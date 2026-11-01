@@ -22,7 +22,7 @@ import com.ove.user.domain.User;
 import com.ove.user.repository.UserRepository;
 import com.ove.watchlist.repository.WatchlistRepository;
 
-@SpringBootTest
+@SpringBootTest(properties = "collector.kiwoom.enabled=false")
 @AutoConfigureMockMvc
 @Transactional
 class WatchlistIntegrationTest {
@@ -45,8 +45,6 @@ class WatchlistIntegrationTest {
         org.springframework.test.util.ReflectionTestUtils.setField(ticker, "tradePrice", new java.math.BigDecimal("98500000"));
         given(marketService.getSupportedMarkets()).willReturn(List.of(market));
         given(marketService.getSupportedTickers()).willReturn(List.of(ticker));
-        given(marketService.getSupportedMarket("005930")).willThrow(
-            new com.ove.global.exception.BusinessException(com.ove.global.exception.ErrorCode.MARKET_NOT_FOUND));
         User user = users.saveAndFlush(User.builder().email("watch@ove.com").nickname("관심사용자").password("hashed").build());
         userId = user.getId();
         access = jwt.createAccessToken(userId).token();
@@ -94,7 +92,14 @@ class WatchlistIntegrationTest {
 
     @Test
     void 잘못된_종목과_빈_입력은_거절한다() throws Exception {
-        add("005930", access, 404);
+        mvc.perform(post("/api/watchlist").header("Authorization", "Bearer " + access)
+            .contentType(MediaType.APPLICATION_JSON).content("{\"symbol\":\"005930\"}"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.statusCode").value(404))
+            .andExpect(jsonPath("$.path").value("/api/watchlist"))
+            .andExpect(jsonPath("$.error").value("MARKET_NOT_FOUND"))
+            .andExpect(jsonPath("$.data").isEmpty());
+        assertThat(watchlist.countByUserId(userId)).isZero();
         add("", access, 400);
         mvc.perform(post("/api/watchlist").header("Authorization", "Bearer " + access)
             .contentType(MediaType.APPLICATION_JSON).content("{}"))
