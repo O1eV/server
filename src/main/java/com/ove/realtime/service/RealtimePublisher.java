@@ -34,6 +34,13 @@ public class RealtimePublisher {
 
     public void publishSignalChange(String symbol, String from, String to,
             java.util.Map<String, BigDecimal> probabilities, BigDecimal confidence, boolean stale) {
+        publishSignalChange(symbol, from, to, probabilities, confidence, stale, null);
+    }
+
+    // modelVersion은 신호를 만든 모델의 이름이다. 모르면 null로 저장한다.
+    public void publishSignalChange(String symbol, String from, String to,
+            java.util.Map<String, BigDecimal> probabilities, BigDecimal confidence, boolean stale,
+            String modelVersion) {
         Instant now = Instant.now();
         if (probabilities != null) {
             if (!probabilities.keySet().containsAll(java.util.Set.of("buy", "hold", "sell"))) {
@@ -41,7 +48,7 @@ public class RealtimePublisher {
             }
             signalService.record(new com.ove.signal.domain.Signal(symbol, from, to,
                     probabilities.get("buy"), probabilities.get("hold"), probabilities.get("sell"), confidence,
-                    null, now, null));
+                    null, now, modelVersion));
         }
         messagingTemplate.convertAndSend("/topic/signals/" + symbol, new SignalMessage(symbol, from, to, probabilities, confidence, stale, now));
 

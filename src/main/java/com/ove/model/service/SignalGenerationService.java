@@ -30,6 +30,7 @@ public class SignalGenerationService {
     private static final Logger log = LoggerFactory.getLogger(SignalGenerationService.class);
     private static final Set<String> LABELS = Set.of("BUY", "HOLD", "SELL");
     private static final int SCALE = 8;
+    private static final int MODEL_VERSION_MAX = 255;
 
     private final ModelProperties properties;
     private final CandleRepository candleRepository;
@@ -82,7 +83,17 @@ public class SignalGenerationService {
                 .setScale(SCALE, RoundingMode.HALF_UP);
         // 이전과 다른 신호로 바뀐 때만 previousSignal을 둔다. 첫 신호·같은 신호가 이어질 때는 null(알림 없음).
         String previous = latest != null && !latest.getSignal().equals(label) ? latest.getSignal() : null;
-        publisher.publishSignalChange(symbol, previous, label, probabilities, confidence, false);
+        publisher.publishSignalChange(symbol, previous, label, probabilities, confidence, false,
+                cleanModelVersion(decision.modelVersion()));
+    }
+
+    // 비었거나 너무 긴 값이 저장을 깨지 않도록 다듬는다. 없으면 null.
+    private String cleanModelVersion(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        return trimmed.length() > MODEL_VERSION_MAX ? trimmed.substring(0, MODEL_VERSION_MAX) : trimmed;
     }
 
     private boolean isValidProbability(double value) {

@@ -87,11 +87,32 @@ class SignalGenerationServiceTest {
         ArgumentCaptor<Map<String, BigDecimal>> probabilities = ArgumentCaptor.forClass(Map.class);
         ArgumentCaptor<BigDecimal> confidence = ArgumentCaptor.forClass(BigDecimal.class);
         verify(publisher).publishSignalChange(eq("KRW-BTC"), eq(null), eq("BUY"), probabilities.capture(),
-                confidence.capture(), eq(false));
+                confidence.capture(), eq(false), eq(null));
         assertThat(probabilities.getValue().get("buy")).isEqualByComparingTo("0.7");
         assertThat(probabilities.getValue().get("hold")).isEqualByComparingTo("0.2");
         assertThat(probabilities.getValue().get("sell")).isEqualByComparingTo("0.1");
         assertThat(confidence.getValue()).isEqualByComparingTo("0.7");
+    }
+
+    @Test
+    @DisplayName("응답의 model_version을 저장 경로까지 넘기고, 없거나 비었으면 null, 너무 길면 255자로 자른다")
+    void passesModelVersion() {
+        candles(15);
+        given(signalRepository.findFirstBySymbolOrderByGeneratedAtDescIdDesc("KRW-BTC")).willReturn(Optional.empty());
+        given(modelClient.predict(any())).willReturn(new ModelDecision("BUY", 0.7, 0.1, 0.2, 0.7, " laya-v3 "),
+                new ModelDecision("BUY", 0.7, 0.1, 0.2, 0.7, "  "),
+                new ModelDecision("BUY", 0.7, 0.1, 0.2, 0.7, "x".repeat(300)));
+
+        service.generate("KRW-BTC", T);
+        verify(publisher).publishSignalChange(eq("KRW-BTC"), eq(null), eq("BUY"), any(), any(), eq(false),
+                eq("laya-v3"));
+
+        service.generate("KRW-BTC", T);
+        verify(publisher).publishSignalChange(eq("KRW-BTC"), eq(null), eq("BUY"), any(), any(), eq(false), eq(null));
+
+        service.generate("KRW-BTC", T);
+        verify(publisher).publishSignalChange(eq("KRW-BTC"), eq(null), eq("BUY"), any(), any(), eq(false),
+                eq("x".repeat(255)));
     }
 
     @Test
@@ -103,10 +124,10 @@ class SignalGenerationServiceTest {
                 new ModelDecision("HOLD", 0.2, 0.1, 0.7, 0.7));
 
         service.generate("KRW-BTC", T);
-        verify(publisher).publishSignalChange(eq("KRW-BTC"), eq("HOLD"), eq("BUY"), any(), any(), eq(false));
+        verify(publisher).publishSignalChange(eq("KRW-BTC"), eq("HOLD"), eq("BUY"), any(), any(), eq(false), eq(null));
 
         service.generate("KRW-BTC", T);
-        verify(publisher).publishSignalChange(eq("KRW-BTC"), eq(null), eq("HOLD"), any(), any(), eq(false));
+        verify(publisher).publishSignalChange(eq("KRW-BTC"), eq(null), eq("HOLD"), any(), any(), eq(false), eq(null));
     }
 
     @Test
@@ -122,7 +143,7 @@ class SignalGenerationServiceTest {
         ArgumentCaptor<Map<String, BigDecimal>> probabilities = ArgumentCaptor.forClass(Map.class);
         ArgumentCaptor<BigDecimal> confidence = ArgumentCaptor.forClass(BigDecimal.class);
         verify(publisher).publishSignalChange(eq("KRW-BTC"), eq(null), eq("SELL"), probabilities.capture(),
-                confidence.capture(), eq(false));
+                confidence.capture(), eq(false), eq(null));
         BigDecimal sum = probabilities.getValue().values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         assertThat(sum.subtract(BigDecimal.ONE).abs()).isLessThan(new BigDecimal("0.001"));
         assertThat(confidence.getValue()).isEqualByComparingTo("1"); // 0~1로 제한
@@ -138,7 +159,7 @@ class SignalGenerationServiceTest {
         service.generate("KRW-BTC", T);
 
         verify(publisher).publishStaleSignal("KRW-BTC", "HOLD", new BigDecimal("0.5"));
-        verify(publisher, never()).publishSignalChange(any(), any(), any(), any(), any(), anyBoolean());
+        verify(publisher, never()).publishSignalChange(any(), any(), any(), any(), any(), anyBoolean(), any());
     }
 
     @Test
@@ -165,7 +186,7 @@ class SignalGenerationServiceTest {
         service.generate("KRW-BTC", T);
 
         verify(publisher, org.mockito.Mockito.times(2)).publishStaleSignal(eq("KRW-BTC"), eq("BUY"), any());
-        verify(publisher, never()).publishSignalChange(any(), any(), any(), any(), any(), anyBoolean());
+        verify(publisher, never()).publishSignalChange(any(), any(), any(), any(), any(), anyBoolean(), any());
     }
 
     @Test
@@ -185,7 +206,7 @@ class SignalGenerationServiceTest {
         }
 
         verify(publisher, org.mockito.Mockito.times(5)).publishStaleSignal(eq("KRW-BTC"), eq("BUY"), any());
-        verify(publisher, never()).publishSignalChange(any(), any(), any(), any(), any(), anyBoolean());
+        verify(publisher, never()).publishSignalChange(any(), any(), any(), any(), any(), anyBoolean(), any());
     }
 
     private static boolean anyBoolean() {
