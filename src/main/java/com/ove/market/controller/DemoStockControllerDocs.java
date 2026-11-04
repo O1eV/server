@@ -9,6 +9,7 @@ import com.ove.global.exception.ErrorCode;
 import com.ove.global.response.ApiResponse;
 import com.ove.market.dto.CandleListResponse;
 import com.ove.market.dto.DemoStockPriceResponse;
+import com.ove.signal.dto.LatestSignalResponse;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -29,6 +30,17 @@ public interface DemoStockControllerDocs {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수집된 현재가")
     @ApiErrorCodes({ErrorCode.UNAUTHORIZED, ErrorCode.MARKET_NOT_FOUND, ErrorCode.COLLECTOR_UNAVAILABLE})
     ResponseEntity<ApiResponse<DemoStockPriceResponse>> getPrice(
+            @Parameter(description = "종목 코드(6자리)", example = "005930") String code);
+
+    @Operation(summary = "주식 시연 AI 분석 조회", description = """
+            저장된 최신 AI 신호(BUY/HOLD/SELL 확률, 확신도, 산출 시각)를 코인 `GET /signals/{symbol}`과 같은 형식으로 돌려줍니다. 열리는 조건은 현재가 조회와 같습니다.
+            - 아직 신호가 없으면 404가 아니라 **200이고 `data`가 null**입니다.
+            - 2분 넘게 갱신되지 않았으면 `stale=true`입니다. `modelVersion`은 모델 서버가 알려 준 경우에만 채워집니다.
+            - `KIWOOM_SYMBOLS`에 없는 코드는 `MARKET_NOT_FOUND`입니다. DB 장애는 `COLLECTOR_UNAVAILABLE`(503)입니다.
+            """)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "최신 AI 신호 (없으면 data null)")
+    @ApiErrorCodes({ErrorCode.UNAUTHORIZED, ErrorCode.MARKET_NOT_FOUND, ErrorCode.COLLECTOR_UNAVAILABLE})
+    ResponseEntity<ApiResponse<LatestSignalResponse>> getAnalysis(
             @Parameter(description = "종목 코드(6자리)", example = "005930") String code);
 
     @Operation(summary = "주식 시연 캔들 조회", description = """

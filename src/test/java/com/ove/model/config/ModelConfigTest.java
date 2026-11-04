@@ -14,6 +14,7 @@ import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 
 import com.ove.market.collector.CandleRepository;
 import com.ove.market.collector.CollectorProperties;
+import com.ove.market.collector.kiwoom.KiwoomProperties;
 import com.ove.model.client.ModelClient;
 import com.ove.model.service.SignalGenerationService;
 import com.ove.realtime.service.RealtimePublisher;
@@ -56,6 +57,39 @@ class ModelConfigTest {
                     assertThat(context).hasSingleBean(ModelClient.class);
                     assertThat(context).hasSingleBean(SignalGenerationService.class);
                 });
+    }
+
+    @Test
+    @DisplayName("키움 수집기가 켜져 있으면 주식 종목과 demo: 마감봉 채널도 듣고, 꺼져 있으면 코인만 듣는다")
+    void mergesKiwoomSymbolsAndChannel() {
+        CollectorProperties collector = mock(CollectorProperties.class);
+        org.mockito.BDDMockito.given(collector.upperCaseSymbols()).willReturn(List.of("KRW-BTC"));
+        KiwoomProperties on = kiwoom(true, List.of("005930", "000660"));
+        KiwoomProperties off = kiwoom(false, List.of("005930"));
+
+        assertThat(ModelConfig.listenerSymbols(collector, on)).containsExactly("KRW-BTC", "005930", "000660");
+        assertThat(ModelConfig.listenerTopics(on)).extracting(topic -> topic.getTopic())
+                .containsExactly("candles.closed:*", "demo:candles.closed:*");
+        assertThat(ModelConfig.listenerSymbols(collector, off)).containsExactly("KRW-BTC");
+        assertThat(ModelConfig.listenerSymbols(collector, null)).containsExactly("KRW-BTC");
+        assertThat(ModelConfig.listenerTopics(off)).extracting(topic -> topic.getTopic())
+                .containsExactly("candles.closed:*");
+        assertThat(ModelConfig.listenerTopics(null)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("키움 설정 빈이 있어도 조립된다")
+    void assembledWithKiwoomProperties() {
+        runner.withBean(KiwoomProperties.class, () -> kiwoom(true, List.of("005930")))
+                .withPropertyValues("model.enabled=true", "collector.enabled=true", "model.base-url=http://localhost:9")
+                .run(context -> assertThat(context).hasNotFailed());
+    }
+
+    private static KiwoomProperties kiwoom(boolean enabled, List<String> symbols) {
+        return new KiwoomProperties(enabled, symbols, null, null, "https://api.kiwoom.com",
+                "wss://api.kiwoom.com:10000/api/dostk/websocket", java.time.Duration.ofMinutes(10),
+                java.time.Duration.ofSeconds(120), java.time.Duration.ofSeconds(15), java.time.Duration.ofMillis(250),
+                java.time.Duration.ofMillis(500), java.time.Duration.ofSeconds(3), false, null, "1");
     }
 
     @Test
