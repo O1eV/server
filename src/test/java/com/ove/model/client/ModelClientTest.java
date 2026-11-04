@@ -53,6 +53,22 @@ class ModelClientTest {
     }
 
     @Test
+    @DisplayName("model_version: 있으면 읽고, 없거나 null이면 null, 모르는 필드가 있어도 실패하지 않는다")
+    void readsModelVersion() {
+        server.handle("/api/v1/predict", request -> Reply.ok(
+                "{\"decision\":\"BUY\",\"buy\":0.7,\"sell\":0.1,\"hold\":0.2,\"confidence\":0.7,"
+                        + "\"model_version\":\"laya-v3\",\"extra\":{\"a\":1}}"));
+        assertThat(client.predict(candles(15)).modelVersion()).isEqualTo("laya-v3");
+
+        server.handle("/api/v1/predict", request -> Reply.ok(OK_BODY));
+        assertThat(client.predict(candles(15)).modelVersion()).isNull();
+
+        server.handle("/api/v1/predict", request -> Reply.ok(
+                "{\"decision\":\"BUY\",\"buy\":0.7,\"sell\":0.1,\"hold\":0.2,\"confidence\":0.7,\"model_version\":null}"));
+        assertThat(client.predict(candles(15)).modelVersion()).isNull();
+    }
+
+    @Test
     @DisplayName("정상: 캔들 배열을 X-API-KEY와 함께 보내고 결정을 받는다")
     void predicts() {
         server.handle("/api/v1/predict", request -> Reply.ok(OK_BODY));

@@ -1,5 +1,6 @@
 package com.ove.realtime.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -37,6 +38,18 @@ class RealtimePublisherSignalTest {
         verify(signalService).record(any());
         verify(template).convertAndSend(eq("/topic/signals/KRW-BTC"), any(Object.class));
         verifyNoInteractions(watchlist);
+    }
+
+    @Test
+    @DisplayName("모델 버전은 저장되는 Signal에 담기고, 안 넘기면 null")
+    void recordsModelVersion() {
+        publisher.publishSignalChange("KRW-BTC", null, "BUY", PROBS, new BigDecimal("0.7"), false, "laya-v3");
+        publisher.publishSignalChange("KRW-BTC", null, "BUY", PROBS, new BigDecimal("0.7"), false);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(com.ove.signal.domain.Signal.class);
+        verify(signalService, org.mockito.Mockito.times(2)).record(captor.capture());
+        assertThat(captor.getAllValues().get(0).getModelVersion()).isEqualTo("laya-v3");
+        assertThat(captor.getAllValues().get(1).getModelVersion()).isNull();
     }
 
     @Test
