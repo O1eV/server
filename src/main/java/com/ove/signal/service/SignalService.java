@@ -7,10 +7,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
+import com.ove.market.service.DemoStockService;
 import com.ove.market.service.MarketService;
 import com.ove.signal.repository.SignalRepository;
 import com.ove.signal.dto.LatestSignalResponse;
@@ -21,10 +23,11 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class SignalService {
     private final SignalRepository repository;
+    private final ObjectProvider<DemoStockService> demoStocks;
 
     @Transactional
     public void record(com.ove.signal.domain.Signal signal) {
-        MarketService.requireSupportedSymbol(signal.getSymbol());
+        requireRecordableSymbol(signal.getSymbol());
         var probabilities = java.util.Arrays.asList(signal.getBuyProbability(), signal.getHoldProbability(), signal.getSellProbability());
         if (signal.getSignal() == null || signal.getConfidence() == null || probabilities.stream().anyMatch(java.util.Objects::isNull)
                 || !java.util.List.of("BUY", "HOLD", "SELL").contains(signal.getSignal())
@@ -35,6 +38,18 @@ public class SignalService {
             throw new BusinessException(ErrorCode.INVALID_REQUEST);
         }
         repository.save(signal);
+    }
+
+    // 코인 종목이거나, 키움 시연이 켜져 있을 때 그 설정에 있는 주식 종목만 저장한다.
+    private void requireRecordableSymbol(String symbol) {
+        try {
+            MarketService.requireSupportedSymbol(symbol);
+        } catch (BusinessException e) {
+            DemoStockService stocks = demoStocks.getIfAvailable();
+            if (stocks == null || !stocks.supportsSymbol(symbol)) {
+                throw e;
+            }
+        }
     }
 
     @Transactional(readOnly = true)

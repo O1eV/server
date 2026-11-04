@@ -17,6 +17,7 @@ import com.ove.global.response.ApiResponse;
 import com.ove.market.dto.CandleListResponse;
 import com.ove.market.dto.DemoStockPriceResponse;
 import com.ove.market.service.DemoStockService;
+import com.ove.signal.dto.LatestSignalResponse;
 
 import lombok.RequiredArgsConstructor;
 
@@ -38,6 +39,14 @@ public class DemoStockController implements DemoStockControllerDocs {
     public ResponseEntity<ApiResponse<DemoStockPriceResponse>> getPrice(@PathVariable String code) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(ApiResponse.success(HttpStatus.OK, "수집 시세를 조회했습니다.", service.getPrice(code)));
+    }
+
+    // 저장된 최신 AI 신호를 조회할 때 사용 (신호가 아직 없으면 data가 null)
+    @Override
+    @GetMapping("/{code}/analysis")
+    public ResponseEntity<ApiResponse<LatestSignalResponse>> getAnalysis(@PathVariable String code) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(ApiResponse.success(HttpStatus.OK, "AI 분석을 조회했습니다.", service.getAnalysis(code)));
     }
 
     // 저장된 주식 1분봉을 조회할 때 사용

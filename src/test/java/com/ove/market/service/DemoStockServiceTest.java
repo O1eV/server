@@ -26,6 +26,9 @@ import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
 import com.ove.market.collector.CandleRepository;
 import com.ove.market.collector.MinuteCandle;
+import com.ove.signal.domain.Signal;
+import com.ove.signal.dto.LatestSignalResponse;
+import com.ove.signal.repository.SignalRepository;
 
 class DemoStockServiceTest {
 
@@ -34,6 +37,7 @@ class DemoStockServiceTest {
     StringRedisTemplate redis;
     HashOperations<String, Object, Object> hash;
     CandleRepository candles;
+    SignalRepository signals;
     DemoStockService service;
 
     @BeforeEach
@@ -42,8 +46,9 @@ class DemoStockServiceTest {
         redis = mock(StringRedisTemplate.class);
         hash = mock(HashOperations.class);
         candles = mock(CandleRepository.class);
+        signals = mock(SignalRepository.class);
         given(redis.opsForHash()).willReturn(hash);
-        service = new DemoStockService(redis, List.of("005930"), candles, Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new DemoStockService(redis, List.of("005930"), candles, signals, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private Map<Object, Object> price(String updatedAt) {
@@ -53,6 +58,51 @@ class DemoStockServiceTest {
     private void assertError(Runnable call, ErrorCode code) {
         assertThatThrownBy(call::run).isInstanceOfSatisfying(BusinessException.class,
                 e -> assertThat(e.getErrorCode()).isEqualTo(code));
+    }
+
+    @Test
+    @DisplayName("분석: 저장된 최신 신호를 코인과 같은 형식으로 돌려준다")
+    void analysisReturnsLatestSignal() {
+        Signal signal = new Signal("005930", "HOLD", "BUY", new BigDecimal("0.7"), new BigDecimal("0.2"),
+                new BigDecimal("0.1"), new BigDecimal("0.42"), null, NOW.minusSeconds(30), "laya-v3");
+        given(signals.findFirstBySymbolOrderByGeneratedAtDescIdDesc("005930")).willReturn(java.util.Optional.of(signal));
+
+        LatestSignalResponse response = service.getAnalysis(" 005930 ");
+
+        assertThat(response.symbol()).isEqualTo("005930");
+        assertThat(response.signal()).isEqualTo("BUY");
+        assertThat(response.buyProbability()).isEqualByComparingTo("0.7");
+        assertThat(response.holdProbability()).isEqualByComparingTo("0.2");
+        assertThat(response.sellProbability()).isEqualByComparingTo("0.1");
+        assertThat(response.confidence()).isEqualByComparingTo("0.42");
+        assertThat(response.generatedAt()).isEqualTo(NOW.minusSeconds(30));
+        assertThat(response.stale()).isFalse();
+        assertThat(response.modelVersion()).isEqualTo("laya-v3");
+    }
+
+    @Test
+    @DisplayName("분석: 2분 넘게 지난 신호는 stale")
+    void analysisIsStaleAfterTwoMinutes() {
+        Signal signal = new Signal("005930", null, "HOLD", new BigDecimal("0.2"), new BigDecimal("0.7"),
+                new BigDecimal("0.1"), new BigDecimal("0.7"), null, NOW.minusSeconds(121), null);
+        given(signals.findFirstBySymbolOrderByGeneratedAtDescIdDesc("005930")).willReturn(java.util.Optional.of(signal));
+
+        assertThat(service.getAnalysis("005930").stale()).isTrue();
+    }
+
+    @Test
+    @DisplayName("분석: 신호가 아직 없으면 예외 없이 null")
+    void analysisReturnsNullWithoutSignal() {
+        given(signals.findFirstBySymbolOrderByGeneratedAtDescIdDesc("005930")).willReturn(java.util.Optional.empty());
+
+        assertThat(service.getAnalysis("005930")).isNull();
+    }
+
+    @Test
+    @DisplayName("분석: 설정에 없는 코드는 MARKET_NOT_FOUND이고 저장소를 보지 않는다")
+    void analysisRejectsUnknownCode() {
+        assertError(() -> service.getAnalysis("000660"), ErrorCode.MARKET_NOT_FOUND);
+        verifyNoInteractions(signals);
     }
 
     @Test

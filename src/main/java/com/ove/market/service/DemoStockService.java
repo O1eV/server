@@ -12,6 +12,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.ove.global.exception.BusinessException;
 import com.ove.global.exception.ErrorCode;
@@ -21,6 +22,8 @@ import com.ove.market.collector.kiwoom.KiwoomProperties;
 import com.ove.market.dto.CandleListResponse;
 import com.ove.market.dto.CandleResponse;
 import com.ove.market.dto.DemoStockPriceResponse;
+import com.ove.signal.dto.LatestSignalResponse;
+import com.ove.signal.repository.SignalRepository;
 
 /**
  * 발표용 주식 시세 조회. 키움 수집기가 저장한 Redis(demo:price:{code})와 candles 테이블을 읽기만 하고
@@ -38,19 +41,21 @@ public class DemoStockService {
     private final StringRedisTemplate redis;
     private final List<String> symbols;
     private final CandleRepository candleRepository;
+    private final SignalRepository signalRepository;
     private final Clock clock;
 
     @Autowired
     public DemoStockService(StringRedisTemplate redis, KiwoomProperties properties,
-                            CandleRepository candleRepository, Clock clock) {
-        this(redis, properties.normalizedSymbols(), candleRepository, clock);
+                            CandleRepository candleRepository, SignalRepository signalRepository, Clock clock) {
+        this(redis, properties.normalizedSymbols(), candleRepository, signalRepository, clock);
     }
 
     DemoStockService(StringRedisTemplate redis, List<String> symbols, CandleRepository candleRepository,
-                     Clock clock) {
+                     SignalRepository signalRepository, Clock clock) {
         this.redis = redis;
         this.symbols = symbols;
         this.candleRepository = candleRepository;
+        this.signalRepository = signalRepository;
         this.clock = clock;
     }
 
@@ -102,6 +107,19 @@ public class DemoStockService {
                     .findMinuteCandles(symbol, from, to != null ? to : clock.instant(), limit)
                     .stream().map(CandleResponse::new).toList();
             return new CandleListResponse(symbol, interval, candles);
+        } catch (RuntimeException exception) {
+            throw new BusinessException(ErrorCode.COLLECTOR_UNAVAILABLE);
+        }
+    }
+
+    // 저장된 최신 AI 신호. 아직 신호가 없으면 null(컨트롤러가 200 + data null로 내린다).
+    @Transactional(readOnly = true)
+    public LatestSignalResponse getAnalysis(String code) {
+        String symbol = requireConfigured(code);
+        try {
+            return signalRepository.findFirstBySymbolOrderByGeneratedAtDescIdDesc(symbol)
+                    .map(signal -> LatestSignalResponse.from(signal, clock.instant()))
+                    .orElse(null);
         } catch (RuntimeException exception) {
             throw new BusinessException(ErrorCode.COLLECTOR_UNAVAILABLE);
         }

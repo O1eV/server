@@ -96,6 +96,47 @@ class DemoStockControllerTest {
     }
 
     @Test
+    @DisplayName("분석: 200 envelope에 최신 신호를 담는다")
+    void analysis() throws Exception {
+        Instant now = Instant.parse("2026-10-26T00:00:00Z");
+        given(service.getAnalysis("005930")).willReturn(new com.ove.signal.dto.LatestSignalResponse(1L, "005930", "HOLD",
+                "BUY", new BigDecimal("0.7"), new BigDecimal("0.2"), new BigDecimal("0.1"), new BigDecimal("0.42"), null,
+                now, false, "laya-v3"));
+
+        mvc.perform(get("/api/demo/stocks/005930/analysis").header("Authorization", token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.symbol").value("005930"))
+                .andExpect(jsonPath("$.data.signal").value("BUY"))
+                .andExpect(jsonPath("$.data.buyProbability").value(0.7))
+                .andExpect(jsonPath("$.data.confidence").value(0.42))
+                .andExpect(jsonPath("$.data.stale").value(false))
+                .andExpect(jsonPath("$.data.modelVersion").value("laya-v3"))
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(header().string("Cache-Control", "no-store"));
+    }
+
+    @Test
+    @DisplayName("분석: 신호가 아직 없으면 404가 아니라 200에 data null")
+    void analysisWithoutSignal() throws Exception {
+        given(service.getAnalysis("005930")).willReturn(null);
+
+        mvc.perform(get("/api/demo/stocks/005930/analysis").header("Authorization", token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    @DisplayName("분석: 설정에 없는 코드는 MARKET_NOT_FOUND, 로그인이 필요하다")
+    void analysisErrors() throws Exception {
+        given(service.getAnalysis("000660")).willThrow(new BusinessException(ErrorCode.MARKET_NOT_FOUND));
+
+        mvc.perform(get("/api/demo/stocks/000660/analysis").header("Authorization", token()))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.error").value("MARKET_NOT_FOUND"));
+        mvc.perform(get("/api/demo/stocks/005930/analysis")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
     @DisplayName("캔들: 기본값(1m, 200)으로 서비스를 부르고 envelope으로 돌려준다")
     void candles() throws Exception {
         given(service.getCandles("005930", "1m", null, null, 200))
